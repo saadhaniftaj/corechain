@@ -1,0 +1,45 @@
+# CoreChain Hospital Node Container
+# Lightweight container for hospital participation
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libhdf5-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy hospital node files
+COPY hospital_node/ /app/hospital_node/
+COPY shared/ /app/shared/
+COPY .proto/ /app/.proto/
+
+# Install Python dependencies
+COPY hospital_node/requirements.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Generate Protocol Buffers
+RUN python -m grpc_tools.protoc \
+    -I/app/.proto \
+    --python_out=/app/shared \
+    --grpc_python_out=/app/shared \
+    /app/.proto/corechain.proto
+
+# Create data directory
+RUN mkdir -p /app/data
+
+# Environment variables (can be overridden)
+ENV HOSPITAL_ID=hospital_1
+ENV HOSPITAL_NAME="General Hospital"
+ENV AGGREGATOR_IP=localhost
+ENV AGGREGATOR_PORT=50051
+ENV DATASET_TYPE=shenzhen
+ENV LOCAL_EPOCHS=5
+ENV BATCH_SIZE=32
+ENV LEARNING_RATE=0.001
+
+# Start hospital node
+CMD ["python", "/app/hospital_node/src/main.py"]

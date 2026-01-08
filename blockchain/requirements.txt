@@ -1,0 +1,13 @@
+# API Framework
+fastapi==0.109.0
+uvicorn==0.27.0
+
+# Cryptography
+hashlib-additional==1.0.0
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.3
+
+# Logging
+loguru==0.7.2

@@ -1,0 +1,56 @@
+# CoreChain Aggregator Container
+# Central server with Flower, Blockchain, Dashboard
+
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libhdf5-dev \
+    pkg-config \
+    nginx \
+    supervisor \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY aggregator/ /app/aggregator/
+COPY blockchain/ /app/blockchain/
+COPY shared/ /app/shared/
+COPY dashboard/ /app/dashboard/
+COPY .proto/ /app/.proto/
+
+# Install Python dependencies
+COPY aggregator/requirements.txt /app/
+COPY blockchain/requirements.txt /app/blockchain/
+RUN pip install --no-cache-dir -r /app/requirements.txt && \
+    pip install --no-cache-dir -r /app/blockchain/requirements.txt
+
+# Generate Protocol Buffers
+RUN python -m grpc_tools.protoc \
+    -I/app/.proto \
+    --python_out=/app/shared \
+    --grpc_python_out=/app/shared \
+    /app/.proto/corechain.proto
+
+# Configure nginx
+RUN rm -f /etc/nginx/sites-enabled/default
+COPY docker/nginx.conf /etc/nginx/sites-enabled/corechain
+
+# Configure supervisor
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Create directories
+RUN mkdir -p /app/data/blockchain /app/models
+
+# Expose ports
+EXPOSE 80 8000 8001 8080 50051 7050
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:8000/api/training/status || exit 1
+
+# Start all services
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

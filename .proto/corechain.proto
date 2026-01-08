@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package corechain;
+
+// Service for model aggregation
+service ModelAggregation {
+  // Hospital submits encrypted model update
+  rpc SubmitUpdate(ModelUpdate) returns (AggregationResponse);
+  
+  // Hospital requests current global model
+  rpc GetGlobalModel(ModelRequest) returns (GlobalModel);
+  
+  // Get current training status
+  rpc GetTrainingStatus(StatusRequest) returns (TrainingStatus);
+  
+  // Register hospital node
+  rpc RegisterHospital(HospitalInfo) returns (RegistrationResponse);
+}
+
+// Model update from hospital
+message ModelUpdate {
+  string hospital_id = 1;
+  int32 round_number = 2;
+  bytes encrypted_weights = 3;  // Encrypted model weights
+  int32 samples_trained = 4;
+  float local_accuracy = 5;
+  float local_loss = 6;
+  string timestamp = 7;
+}
+
+// Response after aggregation
+message AggregationResponse {
+  bool success = 1;
+  string message = 2;
+  int32 current_round = 3;
+  int32 total_participants = 4;
+  string transaction_hash = 5;  // Blockchain transaction ID
+}
+
+// Request for global model
+message ModelRequest {
+  string hospital_id = 1;
+  int32 round_number = 2;
+}
+
+// Global aggregated model
+message GlobalModel {
+  int32 round_number = 1;
+  bytes model_weights = 2;
+  float global_accuracy = 3;
+  float global_loss = 4;
+  int32 total_samples = 5;
+  string timestamp = 6;
+}
+
+// Training status request
+message StatusRequest {
+  string hospital_id = 1;
+}
+
+// Training status response
+message TrainingStatus {
+  int32 current_round = 1;
+  int32 total_rounds = 2;
+  int32 connected_hospitals = 3;
+  float global_accuracy = 4;
+  float global_loss = 5;
+  bool is_training = 6;
+  string next_round_eta = 7;
+}
+
+// Hospital registration info
+message HospitalInfo {
+  string hospital_id = 1;
+  string hospital_name = 2;
+  int32 dataset_size = 3;
+  string dataset_type = 4;  // "shenzhen" or "montgomery"
+}
+
+// Registration response
+message RegistrationResponse {
+  bool success = 1;
+  string message = 2;
+  string public_key = 3;  // For encryption
+}

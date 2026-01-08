@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  aggregator:
+    build:
+      context: ./aggregator
+      dockerfile: Dockerfile
+    container_name: corechain_aggregator
+    network_mode: host
+    environment:
+      - AGGREGATOR_MODE=true
+      - GRPC_PORT=50051
+      - REST_PORT=8000
+      - WEBSOCKET_PORT=8001
+      - BLOCKCHAIN_URL=http://localhost:7050
+      - MIN_CLIENTS=2
+      - FL_ROUNDS=10
+    volumes:
+      - ./aggregator/src:/app/src
+      - ./shared:/app/shared
+      - ./models:/app/models
+      - ./.proto:/app/proto
+    restart: unless-stopped
+    command: python src/main.py
+
+  blockchain:
+    build:
+      context: ./blockchain
+      dockerfile: Dockerfile
+    container_name: corechain_blockchain
+    network_mode: host
+    environment:
+      - BLOCKCHAIN_PORT=7050
+      - DIFFICULTY=4
+    volumes:
+      - ./blockchain/src:/app/src
+      - ./blockchain/data:/app/data
+    restart: unless-stopped
+    command: python src/main.py
+
+  dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    container_name: corechain_dashboard
+    network_mode: host
+    restart: unless-stopped
+
+networks:
+  default:
+    driver: bridge

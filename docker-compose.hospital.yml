@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  hospital_node:
+    build:
+      context: ./hospital_node
+      dockerfile: Dockerfile
+    container_name: corechain_hospital_${HOSPITAL_ID:-1}
+    network_mode: host
+    environment:
+      # IMPORTANT: Update these values for each hospital laptop
+      - HOSPITAL_ID=${HOSPITAL_ID:-hospital_1}
+      - HOSPITAL_NAME=${HOSPITAL_NAME:-General Hospital 1}
+      - AGGREGATOR_IP=${AGGREGATOR_IP:-localhost}
+      - AGGREGATOR_PORT=${AGGREGATOR_PORT:-50051}
+      
+      # Dataset configuration
+      - DATASET_PATH=/data
+      - DATASET_TYPE=${DATASET_TYPE:-shenzhen}  # or 'montgomery'
+      
+      # Training configuration
+      - LOCAL_EPOCHS=5
+      - BATCH_SIZE=32
+      - LEARNING_RATE=0.001
+      
+      # Encryption
+      - ENABLE_ENCRYPTION=true
+    volumes:
+      - ./hospital_node/src:/app/src
+      - ./shared:/app/shared
+      - ./.proto:/app/proto
+      - ./data/tb_dataset:/data
+      - ./models/hospital_${HOSPITAL_ID:-1}:/app/models
+    restart: unless-stopped
+    command: python src/main.py
+
+# To run this on different laptops:
+# 1. Copy this file to each hospital laptop
+# 2. Create a .env file with:
+#    HOSPITAL_ID=hospital_1
+#    HOSPITAL_NAME=General Hospital 1
+#    AGGREGATOR_IP=192.168.1.100  (IP of aggregator laptop)
+# 3. Run: docker-compose -f docker-compose.hospital.yml up
