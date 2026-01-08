@@ -35,25 +35,28 @@
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             margin: 0;
-            background: var(--pearl-white);
+            background: #f8f9fa;
             color: var(--text-dark);
             min-height: 100vh;
             overflow-x: hidden;
+            position: relative;
         }
 
-        /* Background Glow */
-        body::before {
-            content: "";
+        /* Animated SVG Background */
+        #svg-background {
             position: fixed;
-            z-index: 0;
-            left: 0;
             top: 0;
-            width: 100vw;
-            height: 100vh;
-            background: radial-gradient(ellipse 700px 400px at 15% 15%, #fbbf2433 0%, transparent 70%),
-                radial-gradient(ellipse 700px 400px at 90% 80%, #fbbf2444 0%, transparent 66%);
-            pointer-events: none;
-            opacity: 0.65;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.4;
+        }
+
+        .wave-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
         }
 
         /* NAVBAR */
@@ -531,6 +534,43 @@
             }
         }
 
+        /* Wave Animation */
+        @keyframes wave1 {
+
+            0%,
+            100% {
+                d: path("M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V0 H0 V160 Z");
+            }
+
+            50% {
+                d: path("M0,100 C320,20,420,20,740,100 C1060,180,1120,180,1440,100 V0 H0 V100 Z");
+            }
+        }
+
+        @keyframes wave2 {
+
+            0%,
+            100% {
+                d: path("M0,100 C320,180,420,180,740,100 C1060,20,1120,20,1440,100 V0 H0 V100 Z");
+            }
+
+            50% {
+                d: path("M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V0 H0 V160 Z");
+            }
+        }
+
+        @keyframes wave3 {
+
+            0%,
+            100% {
+                d: path("M0,130 C320,250,420,250,740,130 C1060,10,1120,10,1440,130 V0 H0 V130 Z");
+            }
+
+            50% {
+                d: path("M0,80 C320,10,420,10,740,80 C1060,150,1120,150,1440,80 V0 H0 V80 Z");
+            }
+        }
+
         /* Mobile */
         @media (max-width: 820px) {
             .nav-content {
@@ -564,6 +604,45 @@
 </head>
 
 <body>
+    <!-- Animated SVG Wave Background -->
+    <svg id="svg-background" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <defs>
+            <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+                <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:0.2" />
+            </linearGradient>
+            <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#fde68a;stop-opacity:0.25" />
+                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.15" />
+            </linearGradient>
+            <linearGradient id="gradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:0.2" />
+                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.1" />
+            </linearGradient>
+        </defs>
+
+        <!-- Wave 1 -->
+        <path fill="url(#gradient1)">
+            <animate attributeName="d" dur="20s" repeatCount="indefinite" values="M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z;
+                        M0,100 C320,20,420,20,740,100 C1060,180,1120,180,1440,100 V320 H0 V100 Z;
+                        M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z" />
+        </path>
+
+        <!-- Wave 2 -->
+        <path fill="url(#gradient2)">
+            <animate attributeName="d" dur="15s" repeatCount="indefinite" values="M0,100 C320,180,420,180,740,100 C1060,20,1120,20,1440,100 V320 H0 V100 Z;
+                        M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z;
+                        M0,100 C320,180,420,180,740,100 C1060,20,1120,20,1440,100 V320 H0 V100 Z" />
+        </path>
+
+        <!-- Wave 3 -->
+        <path fill="url(#gradient3)">
+            <animate attributeName="d" dur="25s" repeatCount="indefinite" values="M0,130 C320,250,420,250,740,130 C1060,10,1120,10,1440,130 V320 H0 V130 Z;
+                        M0,80 C320,10,420,10,740,80 C1060,150,1120,150,1440,80 V320 H0 V80 Z;
+                        M0,130 C320,250,420,250,740,130 C1060,10,1120,10,1440,130 V320 H0 V130 Z" />
+        </path>
+    </svg>
+
     <div class="bg-animation" id="bgParticles"></div>
 
     <nav>
@@ -578,7 +657,7 @@
                 <a href="#hospitals">Hospitals</a>
                 <a href="#blockchain">Blockchain</a>
             </div>
-            <button class="nav-cta" onclick="loadAllData()">🔄 Refresh</button>
+            <button class="nav-cta" onclick="loadAllData()">Refresh</button>
         </div>
     </nav>
 
@@ -593,10 +672,10 @@
     <!-- TRAINING STATUS -->
     <section id="training">
         <div class="container">
-            <h2 class="section-title">📊 Training Status</h2>
+            <h2 class="section-title">Training Status</h2>
             <div class="cards-grid">
                 <div class="card">
-                    <h3><span class="card-icon">🎯</span> Current Progress</h3>
+                    <h3>Current Progress</h3>
                     <div id="training-status" class="loading">Loading...</div>
                 </div>
             </div>
@@ -608,12 +687,12 @@
         <div class="container">
             <div class="cards-grid">
                 <div class="card">
-                    <h3><span class="card-icon">🏥</span> Connected Hospitals</h3>
+                    <h3>Connected Hospitals</h3>
                     <div id="hospitals" class="loading">Loading...</div>
                 </div>
 
                 <div class="card">
-                    <h3><span class="card-icon">⛓️</span> Blockchain Stats</h3>
+                    <h3>Blockchain Statistics</h3>
                     <div id="blockchain-stats" class="loading">Loading...</div>
                 </div>
             </div>
@@ -625,7 +704,7 @@
         <div class="container">
             <div class="cards-grid">
                 <div class="card" style="grid-column: 1 / -1;">
-                    <h3><span class="card-icon">📜</span> Recent Blockchain Transactions</h3>
+                    <h3>Recent Blockchain Transactions</h3>
                     <div id="transactions" class="loading">Loading...</div>
                 </div>
             </div>
@@ -633,7 +712,7 @@
     </section>
 
     <div style="text-align: center; padding: 2rem;">
-        <button class="refresh-btn" onclick="loadAllData()">🔄 Refresh All Data</button>
+        <button class="refresh-btn" onclick="loadAllData()">Refresh All Data</button>
     </div>
 
     <!-- FOOTER -->
@@ -672,10 +751,10 @@
                 const data = await response.json();
 
                 const statusBadge = data.is_training
-                    ? '<span class="status-badge status-training">🟢 Training Active</span>'
+                    ? '<span class="status-badge status-training">Training Active</span>'
                     : data.current_round === data.total_rounds
-                        ? '<span class="status-badge status-complete">✅ Complete</span>'
-                        : '<span class="status-badge status-waiting">⏳ Waiting</span>';
+                        ? '<span class="status-badge status-complete">Complete</span>'
+                        : '<span class="status-badge status-waiting">Waiting</span>';
 
                 // Update hero status
                 document.getElementById('hero-status').innerHTML = statusBadge;
@@ -708,9 +787,9 @@
                 document.getElementById('training-status').innerHTML = html;
             } catch (error) {
                 document.getElementById('training-status').innerHTML =
-                    '<div class="error">⚠️ Backend not running. Start with: ./start-aggregator.sh</div>';
+                    '<div class="error">Backend not running. Start with: ./start-aggregator.sh</div>';
                 document.getElementById('hero-status').innerHTML =
-                    '<span class="status-badge status-waiting">⏸️ Offline</span>';
+                    '<span class="status-badge status-waiting">Offline</span>';
             }
         }
 
