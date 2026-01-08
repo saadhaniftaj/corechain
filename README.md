@@ -1,30 +1,30 @@
-# CoreChain: Collaborative Medical AI Platform
+# CoreChain - Privacy-Preserving Collaborative Medical AI Platform
 
-**Federated Learning + Blockchain for Privacy-Preserving TB Detection**
+**Final Year Project (FYP)**  
+**Team:** Saad Hanif Taj & Collaborators
 
-## Overview
+[![Docker Hub](https://img.shields.io/badge/Docker%20Hub-saadhaniftaj-blue)](https://hub.docker.com/u/saadhaniftaj)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-CoreChain is a collaborative research platform that enables hospitals to jointly train medical AI models without sharing raw patient data. The system uses:
+---
 
-- **Federated Learning** (Flower framework) for distributed model training
-- **Homomorphic Encryption** for gradient protection
-- **Blockchain** for immutable audit trails and reward distribution
-- **Real-time Dashboard** for monitoring training progress
+## 🎯 Project Overview
 
-## Use Case
+CoreChain is a **privacy-preserving collaborative AI platform** that enables multiple hospitals to jointly train medical AI models (specifically for TB detection) without sharing raw patient data. The system combines:
 
-Multi-hospital Tuberculosis (TB) detection using chest X-ray analysis with Shenzhen and Montgomery datasets.
+- **Federated Learning** (Flower framework) - Train together without sharing data
+- **Homomorphic Encryption** (Paillier) - Protect model gradients
+- **Blockchain** (Custom lightweight) - Immutable audit trail and rewards
+- **Real-time Dashboard** - Monitor training progress
 
-## Architecture
+---
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  Hospital Node  │     │  Hospital Node  │     │  Hospital Node  │
 │   (Laptop 1)    │     │   (Laptop 2)    │     │   (Laptop 3)    │
-│                 │     │                 │     │                 │
-│  - Local Data   │     │  - Local Data   │     │  - Local Data   │
-│  - FL Client    │     │  - FL Client    │     │  - FL Client    │
-│  - TB Model     │     │  - TB Model     │     │  - TB Model     │
 └────────┬────────┘     └────────┬────────┘     └────────┬────────┘
          │                       │                       │
          │      Encrypted Model Updates (gRPC)          │
@@ -32,265 +32,265 @@ Multi-hospital Tuberculosis (TB) detection using chest X-ray analysis with Shenz
                                  │
                     ┌────────────▼────────────┐
                     │   Central Aggregator    │
-                    │     (Main Laptop)       │
-                    │                         │
                     │  - Flower Server        │
-                    │  - Model Aggregation    │
-                    │  - REST API             │
-                    │  - WebSocket Server     │
-                    └────────────┬────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   Blockchain Layer      │
-                    │                         │
-                    │  - Audit Trail          │
-                    │  - Smart Contracts      │
-                    │  - Reward Distribution  │
-                    └────────────┬────────────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   Dashboard (Browser)   │
-                    │                         │
-                    │  - Real-time Metrics    │
-                    │  - Blockchain Viewer    │
-                    │  - Hospital Network     │
+                    │  - Blockchain           │
+                    │  - Dashboard            │
                     └─────────────────────────┘
 ```
 
-## Quick Start
+---
+
+## 🚀 Quick Start
 
 ### Prerequisites
+- Docker installed
+- 2+ laptops on same network
+- Internet connection (for first pull)
 
-- Docker and Docker Compose
-- 3+ laptops on the same LAN network
-- Python 3.10+ (for local development)
-
-### 1. Start Aggregator (Main Laptop)
-
-```bash
-# Clone the repository
-cd corechain
-
-# Start aggregator services
-docker-compose -f docker-compose.aggregator.yml up --build
-
-# Services will be available at:
-# - Flower Server: port 8080
-# - REST API: http://localhost:8000
-# - WebSocket: ws://localhost:8001
-# - Blockchain API: http://localhost:7050
-```
-
-### 2. Start Hospital Nodes (Other Laptops)
-
-On each hospital laptop:
+### 1. Start Aggregator (Admin)
 
 ```bash
-# Create .env file
-cat > .env << EOF
-HOSPITAL_ID=hospital_1
-HOSPITAL_NAME=General Hospital 1
-AGGREGATOR_IP=192.168.1.100  # Replace with aggregator laptop IP
-AGGREGATOR_PORT=50051
-DATASET_TYPE=shenzhen
-EOF
+docker pull saadhaniftaj/corechain-aggregator:latest
 
-# Start hospital node
-docker-compose -f docker-compose.hospital.yml up --build
+docker run -d \
+  -p 80:80 \
+  -p 8080:8080 \
+  -p 50051:50051 \
+  -p 7050:7050 \
+  --name corechain-aggregator \
+  saadhaniftaj/corechain-aggregator:latest
 ```
 
-### 3. Open Dashboard
+**Access Dashboard:** http://localhost
 
-Open browser and navigate to:
-```
-http://<aggregator-ip>:3000
+### 2. Start Hospital Nodes
+
+```bash
+docker pull saadhaniftaj/corechain-hospital:latest
+
+docker run -d \
+  -e HOSPITAL_ID=hospital_1 \
+  -e HOSPITAL_NAME="General Hospital" \
+  -e AGGREGATOR_IP=<aggregator-ip> \
+  --name hospital-1 \
+  saadhaniftaj/corechain-hospital:latest
 ```
 
-## Project Structure
+---
+
+## 📁 Project Structure
 
 ```
 corechain/
-├── aggregator/                 # Central aggregator service
+├── aggregator/              # Central server
 │   ├── src/
-│   │   ├── main.py            # Main entry point
-│   │   ├── flower_server.py   # Flower FL server
-│   │   ├── grpc_server.py     # gRPC communication
-│   │   ├── rest_api.py        # Dashboard API
+│   │   ├── main.py         # Entry point
+│   │   ├── flower_server.py # FL coordination
+│   │   ├── grpc_server.py  # Hospital communication
+│   │   ├── rest_api.py     # Dashboard API
 │   │   ├── websocket_server.py # Real-time updates
 │   │   └── blockchain_client.py # Blockchain interaction
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── hospital_node/             # Hospital node service
+├── hospital_node/          # Hospital participant
 │   ├── src/
-│   │   ├── main.py            # Main entry point
-│   │   ├── fl_trainer.py      # Flower client
-│   │   ├── grpc_client.py     # gRPC communication
-│   │   ├── tb_model.py        # TB detection CNN
-│   │   └── data_loader.py     # Dataset handling
+│   │   ├── main.py        # Entry point
+│   │   ├── fl_trainer.py  # Flower client
+│   │   ├── tb_model.py    # CNN model
+│   │   ├── data_loader.py # Dataset handling
+│   │   └── grpc_client.py # Aggregator communication
 │   ├── Dockerfile
 │   └── requirements.txt
 │
-├── blockchain/                # Blockchain service
+├── blockchain/             # Audit trail
 │   ├── src/
-│   │   ├── main.py            # Main entry point
-│   │   ├── blockchain_core.py # Blockchain implementation
+│   │   ├── blockchain_core.py # Core blockchain
 │   │   ├── smart_contracts.py # Validation & rewards
 │   │   └── fabric_api.py      # REST API
-│   ├── Dockerfile
 │   └── requirements.txt
 │
-├── shared/                    # Shared utilities
-│   ├── encryption.py          # Homomorphic encryption
-│   └── __init__.py
+├── dashboard/              # Web interface
+│   └── index.html         # Real-time dashboard
 │
-├── .proto/                    # Protocol buffers
-│   └── corechain.proto        # gRPC definitions
+├── shared/                 # Shared utilities
+│   └── encryption.py      # Paillier HE
 │
-├── dashboard/                 # React dashboard (to be created)
-│   └── ...
+├── .proto/                 # gRPC definitions
+│   └── corechain.proto
 │
-├── docker-compose.aggregator.yml
-├── docker-compose.hospital.yml
-└── README.md
+├── docker/                 # Docker configs
+│   ├── nginx.conf
+│   └── supervisord.conf
+│
+├── QUICKSTART.md          # Fast deployment guide
+├── DEPLOYMENT.md          # Multi-laptop setup
+├── WORKFLOW.md            # System explanation
+└── README.md              # This file
 ```
 
-## Technology Stack
+---
 
-| Component | Technology |
-|-----------|-----------|
-| **Federated Learning** | Flower (flwr) |
-| **Machine Learning** | TensorFlow/Keras |
-| **Communication** | gRPC, REST (FastAPI), WebSocket |
-| **Encryption** | Paillier (phe library) |
-| **Blockchain** | Custom Python blockchain |
-| **Frontend** | React + TypeScript + Tailwind CSS |
-| **Containerization** | Docker + Docker Compose |
+## 🔧 Technology Stack
 
-## Key Features
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **Federated Learning** | Flower 1.6.0 | Multi-party training |
+| **Machine Learning** | TensorFlow 2.15.0 | TB detection CNN |
+| **Communication** | gRPC, FastAPI, WebSocket | Inter-service messaging |
+| **Encryption** | Paillier (phe) | Gradient protection |
+| **Blockchain** | Custom Python | Audit trail |
+| **Frontend** | HTML/CSS/JS | Dashboard |
+| **Deployment** | Docker Compose | Orchestration |
 
-### 1. Privacy-Preserving Training
-- Data never leaves hospital premises
-- Only encrypted model updates are shared
-- Homomorphic encryption for gradient protection
+---
 
-### 2. Blockchain Audit Trail
-- Immutable record of all training events
-- Transparent contribution tracking
-- Automated reward distribution
+## 📊 Features Implemented
 
-### 3. Real-time Dashboard
-- Live training progress monitoring
-- Accuracy/loss visualization
-- Blockchain transaction viewer
-- Hospital network status
+### ✅ Phase 1: Infrastructure
+- Multi-node Docker architecture
+- gRPC communication
+- REST API for dashboard
+- WebSocket for real-time updates
 
-### 4. Smart Contracts
-- Model update validation
-- Reward calculation (base + accuracy + contribution)
-- Audit logging
+### ✅ Phase 2: Federated Learning
+- Flower framework integration
+- Custom FedAvg strategy
+- TB detection CNN model
+- Data preprocessing pipeline
+- Paillier homomorphic encryption
 
-## API Endpoints
+### ✅ Phase 3: Blockchain
+- Lightweight blockchain core
+- Smart contracts (validation, rewards, audit)
+- Transaction logging
+- Reward distribution
 
-### REST API (Port 8000)
+### ✅ Phase 4: Dashboard
+- Real-time training monitoring
+- Hospital network viewer
+- Blockchain transaction explorer
+- Responsive UI with animations
 
-- `GET /api/training/status` - Current training status
-- `GET /api/hospitals` - List of registered hospitals
-- `GET /api/metrics/history` - Historical metrics
-- `GET /api/blockchain/transactions` - Recent transactions
-- `GET /api/rewards` - Reward leaderboard
+---
 
-### Blockchain API (Port 7050)
+## 🎓 Team Collaboration
 
-- `POST /api/blockchain/transaction` - Submit transaction
-- `GET /api/blockchain/chain` - Get full blockchain
-- `GET /api/blockchain/hospital/{id}/rewards` - Get hospital rewards
-- `GET /api/blockchain/leaderboard` - Get leaderboard
+### For Team Members:
 
-## Configuration
-
-### Environment Variables
-
-**Aggregator:**
-- `GRPC_PORT` - gRPC server port (default: 50051)
-- `REST_PORT` - REST API port (default: 8000)
-- `WEBSOCKET_PORT` - WebSocket port (default: 8001)
-- `BLOCKCHAIN_URL` - Blockchain service URL
-- `MIN_CLIENTS` - Minimum clients for FL (default: 2)
-- `FL_ROUNDS` - Number of FL rounds (default: 10)
-
-**Hospital Node:**
-- `HOSPITAL_ID` - Unique hospital identifier
-- `HOSPITAL_NAME` - Hospital display name
-- `AGGREGATOR_IP` - Aggregator IP address
-- `AGGREGATOR_PORT` - Aggregator gRPC port
-- `DATASET_PATH` - Path to TB dataset
-- `DATASET_TYPE` - Dataset type (shenzhen/montgomery)
-- `LOCAL_EPOCHS` - Local training epochs (default: 5)
-- `BATCH_SIZE` - Training batch size (default: 32)
-- `LEARNING_RATE` - Learning rate (default: 0.001)
-
-## Development
-
-### Local Development (Without Docker)
-
-1. Install dependencies:
+**Clone Repository:**
 ```bash
-cd aggregator
-pip install -r requirements.txt
-
-cd ../hospital_node
-pip install -r requirements.txt
-
-cd ../blockchain
-pip install -r requirements.txt
+git clone https://github.com/saadhaniftaj/fyp.git
+cd fyp
 ```
 
-2. Generate Protocol Buffers:
+**Local Development:**
 ```bash
-python -m grpc_tools.protoc -I.proto --python_out=./shared --grpc_python_out=./shared .proto/corechain.proto
+# Generate Protocol Buffers
+./setup.sh
+
+# Start aggregator
+./start-aggregator.sh
+
+# Start hospital node
+./start-hospital.sh
 ```
 
-3. Run services:
+**Docker Images:**
+- Aggregator: `saadhaniftaj/corechain-aggregator:latest`
+- Hospital: `saadhaniftaj/corechain-hospital:latest`
+
+---
+
+## 📖 Documentation
+
+- **[QUICKSTART.md](QUICKSTART.md)** - Fast deployment (5 minutes)
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Multi-laptop setup guide
+- **[WORKFLOW.md](WORKFLOW.md)** - Complete system explanation
+- **[SRS.pdf](SRS.pdf)** - Software Requirements Specification
+
+---
+
+## 🎬 Demo Instructions
+
+### Presentation Setup (3 Laptops):
+
+1. **Laptop 1 (Aggregator):** Run aggregator container
+2. **Laptop 2-3 (Hospitals):** Run hospital containers
+3. **Browser:** Open dashboard to show real-time training
+
+### Expected Results:
+- Training completes in ~10 minutes (10 rounds)
+- Final accuracy: 80-90%
+- Blockchain: 30-50 transactions
+- Dashboard: Live updates every 5 seconds
+
+---
+
+## 🔍 Monitoring & Debugging
+
+### View Logs:
 ```bash
-# Terminal 1: Blockchain
-cd blockchain/src
-python main.py
-
-# Terminal 2: Aggregator
-cd aggregator/src
-python main.py
-
-# Terminal 3: Hospital Node
-cd hospital_node/src
-python main.py
+docker logs -f corechain-aggregator
+docker logs -f hospital-1
 ```
 
-## Troubleshooting
+### Check Status:
+```bash
+# Training status
+curl http://localhost:8000/api/training/status
 
-### Connection Issues
-- Ensure all laptops are on the same network
-- Check firewall settings (allow ports 8000, 8001, 8080, 50051, 7050)
-- Verify aggregator IP address in hospital node .env file
+# Blockchain stats
+curl http://localhost:7050/api/blockchain/stats
+```
 
-### Dataset Issues
-- If no dataset is found, synthetic data will be generated automatically
-- For real datasets, place images in `/data` directory
+### Troubleshooting:
+- Check `DEPLOYMENT.md` for common issues
+- Verify network connectivity between laptops
+- Ensure all required ports are open
 
-### Docker Issues
-- Run `docker-compose down -v` to clean up volumes
-- Rebuild with `docker-compose up --build --force-recreate`
+---
 
-## License
+## 🚧 Future Enhancements
 
-MIT License
+- [ ] Add authentication (JWT)
+- [ ] Enable HTTPS/TLS
+- [ ] Integrate real TB datasets
+- [ ] Add model versioning
+- [ ] Implement differential privacy
+- [ ] Create React dashboard
+- [ ] Deploy to cloud (Azure/AWS)
 
-## Contributors
+---
 
-CoreChain Development Team
+## 📝 License
 
-## Acknowledgments
+MIT License - See [LICENSE](LICENSE) file
+
+---
+
+## 👥 Contributors
+
+- **Saad Hanif Taj** - [@saadhaniftaj](https://github.com/saadhaniftaj)
+- **Team Members** - (Add your names here)
+
+---
+
+## 📧 Contact
+
+- **Email:** contact@vanguardsolutions.cloud
+- **GitHub:** https://github.com/saadhaniftaj/fyp
+- **Docker Hub:** https://hub.docker.com/u/saadhaniftaj
+
+---
+
+## 🙏 Acknowledgments
 
 - Flower Framework for federated learning
 - TensorFlow for deep learning
 - Shenzhen and Montgomery TB datasets
+- University supervisors and mentors
+
+---
+
+**Built with ❤️ for advancing privacy-preserving medical AI research**
