@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoreChain Hospital Node | Dashboard</title>
+
+    <!-- SEO Meta Tags -->
+    <meta name="description"
+        content="CoreChain Hospital Node - Privacy-preserving federated learning dashboard for collaborative medical AI research.">
+    <meta name="keywords" content="federated learning, medical AI, hospital node, TB detection, privacy-preserving AI">
+
+    <link href="https://fonts.googleapis.com/css?family=Inter:400,700,900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --pearl-white: #f8f9fa;
+            --pearl-dark: #e9ecef;
+            --yellow-primary: #fbbf24;
+            --yellow-dark: #f59e0b;
+            --yellow-light: #fde68a;
+            --text-dark: #1f2937;
+            --text-light: #6b7280;
+            --card-white: #ffffff;
+            --card-hover: #fefefe;
+            --border-light: #e5e7eb;
+            --success: #10b981;
+            --error: #ef4444;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--pearl-white);
+            color: var(--text-dark);
+            min-height: 100vh;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated SVG Background */
+        #svg-background {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.4;
+        }
+
+
+        .wave-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Main Container */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 80px 20px 40px;
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--card-white) 0%, var(--pearl-dark) 100%);
+            padding: 30px 40px;
+            border-radius: 16px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07), 0 0 20px rgba(251, 191, 36, 0.1);
+            margin-bottom: 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid rgba(251, 191, 36, 0.2);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .header:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1), 0 0 30px rgba(251, 191, 36, 0.15);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--yellow-dark), var(--yellow-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.02em;
+        }
+
+        .hospital-id {
+            font-size: 14px;
+            color: var(--text-light);
+            font-weight: 600;
+            margin-top: 8px;
+        }
+
+        /* Connection Status Badge */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            border-radius: 30px;
+            font-size: 15px;
+            font-weight: 700;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s;
+        }
+
+        .status-badge:hover {
+            transform: scale(1.05);
+        }
+
+        .status-badge.connected {
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            color: #065f46;
+        }
+
+        .status-badge.disconnected {
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            color: #991b1b;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        .status-badge.connected .status-dot {
+            background: var(--success);
+            box-shadow: 0 0 10px var(--success);
+        }
+
+        .status-badge.disconnected .status-dot {
+            background: var(--error);
+            box-shadow: 0 0 10px var(--error);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.6;
+                transform: scale(0.9);
+            }
+        }
+
+        /* Dashboard Grid */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .full-width {
+            grid-column: 1 / -1;
+        }
+
+        /* Cards with Hover Effects */
+        .card {
+            background: var(--card-white);
+            padding: 28px;
+            border-radius: 16px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+            border: 1px solid var(--border-light);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--yellow-primary), var(--yellow-dark));
+            transform: scaleX(0);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1), 0 0 20px rgba(251, 191, 36, 0.15);
+        }
+
+        .card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .card-title {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        /* Stats Grid with Animations */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 24px;
+            background: linear-gradient(135deg, var(--pearl-white), var(--pearl-dark));
+            border-radius: 12px;
+            border: 1px solid var(--border-light);
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-4px) scale(1.02);
+            box-shadow: 0 4px 12px rgba(251, 191, 36, 0.2);
+            background: linear-gradient(135deg, var(--yellow-light), var(--yellow-primary));
+        }
+
+        .stat-value {
+            font-size: 40px;
+            font-weight: 900;
+            background: linear-gradient(135deg, var(--yellow-dark), var(--yellow-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 8px;
+            transition: all 0.3s;
+        }
+
+        .stat-item:hover .stat-value {
+            transform: scale(1.1);
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: var(--text-light);
+            font-weight: 600;
+        }
+
+        /* Training Controls */
+        .training-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .form-group label {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 12px 16px;
+            border: 2px solid var(--border-light);
+            border-radius: 10px;
+            font-size: 14px;
+            font-family: 'Inter', sans-serif;
+            transition: all 0.3s;
+            background: var(--card-white);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--yellow-primary);
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.1);
+        }
+
+        /* Buttons with Animations */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: 'Inter', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--yellow-primary), var(--yellow-dark));
+            color: var(--text-dark);
+            box-shadow: 0 4px 12px rgba(251, 191, 36, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(251, 191, 36, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: var(--border-light);
+            color: var(--text-light);
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 12px;
+        }
+
+        /* Table with Hover Effects */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th,
+        td {
+            text-align: left;
+            padding: 16px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        th {
+            font-weight: 700;
+            color: var(--text-dark);
+            font-size: 14px;
+            background: var(--pearl-white);
+        }
+
+        td {
+            font-size: 14px;
+            color: var(--text-light);
+        }
+
+        tr {
+            transition: all 0.2s;
+        }
+
+        tr:hover {
+            background: linear-gradient(90deg, rgba(251, 191, 36, 0.05), transparent);
+            transform: scale(1.01);
+        }
+
+        /* Training Status */
+        .training-status {
+            padding: 20px;
+            background: linear-gradient(135deg, var(--pearl-white), var(--pearl-dark));
+            border-radius: 12px;
+            margin-top: 20px;
+            border: 2px solid var(--yellow-light);
+        }
+
+        .status-text {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-dark);
+            margin-bottom: 12px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background: var(--border-light);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--yellow-primary), var(--yellow-dark));
+            transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 48px;
+            color: var(--text-light);
+        }
+
+        .empty-state-icon {
+            font-size: 64px;
+            margin-bottom: 16px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-10px);
+            }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats {
+                grid-template-columns: 1fr;
+            }
+
+            .header {
+                flex-direction: column;
+                gap: 16px;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Animated SVG Wave Background -->
+    <svg id="svg-background" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <defs>
+            <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#fbbf24;stop-opacity:0.3" />
+                <stop offset="100%" style="stop-color:#f59e0b;stop-opacity:0.2" />
+            </linearGradient>
+            <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#fde68a;stop-opacity:0.25" />
+                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.15" />
+            </linearGradient>
+            <linearGradient id="gradient3" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" style="stop-color:#f59e0b;stop-opacity:0.2" />
+                <stop offset="100%" style="stop-color:#fbbf24;stop-opacity:0.1" />
+            </linearGradient>
+        </defs>
+
+        <!-- Wave 1 -->
+        <path fill="url(#gradient1)">
+            <animate attributeName="d" dur="20s" repeatCount="indefinite" values="M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z;
+                    M0,100 C320,20,420,20,740,100 C1060,180,1120,180,1440,100 V320 H0 V100 Z;
+                    M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z" />
+        </path>
+
+        <!-- Wave 2 -->
+        <path fill="url(#gradient2)">
+            <animate attributeName="d" dur="15s" repeatCount="indefinite" values="M0,100 C320,180,420,180,740,100 C1060,20,1120,20,1440,100 V320 H0 V100 Z;
+                    M0,160 C320,300,420,300,740,160 C1060,20,1120,20,1440,160 V320 H0 V160 Z;
+                    M0,100 C320,180,420,180,740,100 C1060,20,1120,20,1440,100 V320 H0 V100 Z" />
+        </path>
+
+        <!-- Wave 3 -->
+        <path fill="url(#gradient3)">
+            <animate attributeName="d" dur="25s" repeatCount="indefinite" values="M0,130 C320,250,420,250,740,130 C1060,10,1120,10,1440,130 V320 H0 V130 Z;
+                    M0,80 C320,10,420,10,740,80 C1060,150,1120,150,1440,80 V320 H0 V80 Z;
+                    M0,130 C320,250,420,250,740,130 C1060,10,1120,10,1440,130 V320 H0 V130 Z" />
+        </path>
+    </svg>
+
+
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <h1>🏥 Hospital Node Dashboard</h1>
+                <div class="hospital-id" id="hospital-id">Hospital ID: Loading...</div>
+            </div>
+            <div class="status-badge disconnected" id="connection-status">
+                <span class="status-dot"></span>
+                <span>Connecting...</span>
+            </div>
+        </div>
+
+        <!-- Dashboard Grid -->
+        <div class="dashboard-grid">
+            <!-- Stats -->
+            <div class="card full-width">
+                <div class="card-header">
+                    <h2 class="card-title">📊 Statistics</h2>
+                </div>
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-rounds">0</div>
+                        <div class="stat-label">Total Rounds</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="token-balance">0</div>
+                        <div class="stat-label">Tokens Earned</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="current-round">-</div>
+                        <div class="stat-label">Current Round</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Controls -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">🎯 Training Controls</h2>
+                </div>
+                <div class="training-controls">
+                    <div class="form-group">
+                        <label>Dataset Path</label>
+                        <input type="text" id="dataset-path" placeholder="/data" value="/data">
+                    </div>
+                    <div class="form-group">
+                        <label>Dataset Type</label>
+                        <select id="dataset-type">
+                            <option value="shenzhen">Shenzhen</option>
+                            <option value="montgomery">Montgomery</option>
+                        </select>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" id="start-training">▶ Start Training</button>
+                        <button class="btn btn-danger" id="stop-training" disabled>⏹ Stop</button>
+                    </div>
+                </div>
+
+                <!-- Training Status -->
+                <div class="training-status" id="training-status" style="display: none;">
+                    <div class="status-text" id="status-text">Idle</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Round Approval -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">✅ Round Approval</h2>
+                </div>
+                <div id="round-approval-container">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">⏳</div>
+                        <div>No pending rounds</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rounds History -->
+        <div class="card">
+            <div class="card-header">
+                <h2 class="card-title">📜 Rounds History</h2>
+            </div>
+            <div id="rounds-history">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Round</th>
+                            <th>Timestamp</th>
+                            <th>Accuracy</th>
+                            <th>Loss</th>
+                            <th>Tokens</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody id="rounds-table-body">
+                        <tr>
+                            <td colspan="6" class="empty-state">No rounds yet</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Base URL
+        const API_URL = window.location.origin;
+
+        // State
+        let currentRound = null;
+        let isTraining = false;
+
+        // Initialize dashboard
+        async function init() {
+            await loadStatus();
+            await loadRounds();
+            setInterval(loadStatus, 5000); // Update every 5 seconds
+        }
+
+        // Load status
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_URL}/api/status`);
+                const data = await response.json();
+
+                // Update connection status
+                const statusBadge = document.getElementById('connection-status');
+                if (data.aggregator_connected) {
+                    statusBadge.className = 'status-badge connected';
+                    statusBadge.innerHTML = '<span class="status-dot"></span><span>Connected</span>';
+                } else {
+                    statusBadge.className = 'status-badge disconnected';
+                    statusBadge.innerHTML = '<span class="status-dot"></span><span>Disconnected</span>';
+                }
+
+                // Update hospital ID
+                document.getElementById('hospital-id').textContent = `Hospital ID: ${data.hospital_id}`;
+
+                // Update stats
+                document.getElementById('total-rounds').textContent = data.total_rounds || 0;
+                document.getElementById('token-balance').textContent = data.token_balance || 0;
+                document.getElementById('current-round').textContent = data.current_round || '-';
+
+                // Update training status
+                if (data.is_training) {
+                    showTrainingStatus(data.training_status);
+                }
+            } catch (error) {
+                console.error('Failed to load status:', error);
+                document.getElementById('connection-status').className = 'status-badge disconnected';
+            }
+        }
+
+        // Load rounds history
+        async function loadRounds() {
+            try {
+                const response = await fetch(`${API_URL}/api/rounds`);
+                const rounds = await response.json();
+
+                const tbody = document.getElementById('rounds-table-body');
+                if (rounds.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No rounds yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = rounds.map(round => `
+                    <tr>
+                        <td><strong>#${round.round_number}</strong></td>
+                        <td>${new Date(round.timestamp).toLocaleString()}</td>
+                        <td><strong style="color: var(--yellow-dark);">${(round.accuracy * 100).toFixed(2)}%</strong></td>
+                        <td>${round.loss.toFixed(4)}</td>
+                        <td><strong>${round.tokens_earned}</strong></td>
+                        <td>${round.status}</td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load rounds:', error);
+            }
+        }
+
+        // Show training status
+        function showTrainingStatus(status) {
+            const statusDiv = document.getElementById('training-status');
+            statusDiv.style.display = 'block';
+            document.getElementById('status-text').textContent = status;
+            document.getElementById('start-training').disabled = true;
+            document.getElementById('stop-training').disabled = false;
+        }
+
+        // Start training
+        document.getElementById('start-training').addEventListener('click', async () => {
+            const datasetPath = document.getElementById('dataset-path').value;
+            const datasetType = document.getElementById('dataset-type').value;
+
+            try {
+                const response = await fetch(`${API_URL}/api/training/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ dataset_path: datasetPath, dataset_type: datasetType })
+                });
+
+                if (response.ok) {
+                    alert('Training started!');
+                    isTraining = true;
+                    showTrainingStatus('Training in progress...');
+                } else {
+                    alert('Failed to start training');
+                }
+            } catch (error) {
+                console.error('Error starting training:', error);
+                alert('Error starting training');
+            }
+        });
+
+        // Stop training
+        document.getElementById('stop-training').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/training/stop`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('Training stopped');
+                    isTraining = false;
+                    document.getElementById('training-status').style.display = 'none';
+                    document.getElementById('start-training').disabled = false;
+                    document.getElementById('stop-training').disabled = true;
+                }
+            } catch (error) {
+                console.error('Error stopping training:', error);
+            }
+        });
+
+        // Initialize on page load
+        init();
+    </script>
+</body>
+
+</html>
