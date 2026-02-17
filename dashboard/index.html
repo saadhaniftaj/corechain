@@ -745,7 +745,7 @@
         // Load training status
         async function loadTrainingStatus() {
             try {
-                const response = await fetch(`${API_URL}/api/training/status`);
+                const response = await fetch(`${API_URL}/api/status`);
                 const data = await response.json();
 
                 const statusBadge = data.is_training
