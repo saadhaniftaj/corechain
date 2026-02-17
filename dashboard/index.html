@@ -880,10 +880,27 @@
         // Load transactions
         async function loadTransactions() {
             try {
-                const response = await fetch(`${API_URL}/api/blockchain/transactions?limit=10`);
+                const response = await fetch(`${BLOCKCHAIN_URL}/api/blockchain/transactions?limit=10`);
+
+                if (!response.ok) {
+                    // If endpoint doesn't exist, hide the transactions section
+                    const transactionsCard = document.getElementById('transactions').closest('.card');
+                    if (transactionsCard) {
+                        transactionsCard.style.display = 'none';
+                    }
+                    return;
+                }
+
                 const data = await response.json();
 
-                if (data.transactions.length === 0) {
+                if (data.transactions && data.transactions.length === 0) {
+                    document.getElementById('transactions').innerHTML =
+                        '<p style="color: var(--text-light);">No transactions yet</p>';
+                    return;
+                }
+
+                const transactions = data.transactions || data || [];
+                if (transactions.length === 0) {
                     document.getElementById('transactions').innerHTML =
                         '<p style="color: var(--text-light);">No transactions yet</p>';
                     return;
@@ -891,15 +908,14 @@
 
                 const html = `
                     <div class="transaction-list">
-                        ${data.transactions.map(tx => `
+                        ${transactions.map(tx => `
                             <div class="transaction-item">
-                                <div class="transaction-type">${tx.type}</div>
+                                <div class="transaction-type">${tx.type || 'Update'}</div>
                                 <div class="transaction-details">
                                     ${tx.hospital_id ? `Hospital: ${tx.hospital_id} | ` : ''}
                                     ${tx.round ? `Round: ${tx.round} | ` : ''}
                                     ${tx.accuracy ? `Accuracy: ${(tx.accuracy * 100).toFixed(2)}% | ` : ''}
-                                    ${tx.reward_tokens ? `Reward: ${tx.reward_tokens} tokens | ` : ''}
-                                    Block: ${tx.block_index}
+                                    ${tx.timestamp ? new Date(tx.timestamp * 1000).toLocaleString() : ''}
                                 </div>
                             </div>
                         `).join('')}
@@ -908,8 +924,11 @@
 
                 document.getElementById('transactions').innerHTML = html;
             } catch (error) {
-                document.getElementById('transactions').innerHTML =
-                    '<div class="error">Failed to load transactions</div>';
+                // Hide the transactions section if it's not available
+                const transactionsCard = document.getElementById('transactions').closest('.card');
+                if (transactionsCard) {
+                    transactionsCard.style.display = 'none';
+                }
             }
         }
 
