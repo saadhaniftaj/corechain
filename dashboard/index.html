@@ -739,9 +739,8 @@
         // Use relative paths - nginx on port 80 proxies /api/* to backend
         const API_URL = '';
 
-        const BLOCKCHAIN_URL = window.location.hostname === 'localhost'
-            ? 'http://localhost:7050'
-            : `http://${window.location.hostname}:7050`;
+        // Blockchain service on port 7050
+        const BLOCKCHAIN_URL = `http://${window.location.hostname}:7050`;
 
         // Load training status
         async function loadTrainingStatus() {
@@ -798,7 +797,10 @@
                 const response = await fetch(`${API_URL}/api/hospitals`);
                 const data = await response.json();
 
-                if (data.hospitals.length === 0) {
+                // API returns array directly, not {hospitals: []}
+                const hospitals = Array.isArray(data) ? data : (data.hospitals || []);
+
+                if (hospitals.length === 0) {
                     document.getElementById('hospitals').innerHTML =
                         '<p style="color: var(--text-light);">No hospitals connected yet</p>';
                     return;
@@ -806,13 +808,13 @@
 
                 const html = `
                     <ul class="hospital-list">
-                        ${data.hospitals.map(hospital => `
+                        ${hospitals.map(hospital => `
                             <li class="hospital-item">
                                 <div>
-                                    <div class="hospital-name">${hospital.hospital_name}</div>
+                                    <div class="hospital-name">${hospital.hospital_name || hospital.hospital_id}</div>
                                     <div style="font-size: 0.9em; color: var(--text-light);">${hospital.hospital_id}</div>
                                 </div>
-                                <div class="hospital-status"></div>
+                                <div class="hospital-status" style="color: ${hospital.status === 'connected' ? '#10b981' : '#666'};">● ${hospital.status || 'unknown'}</div>
                             </li>
                         `).join('')}
                     </ul>
@@ -820,6 +822,7 @@
 
                 document.getElementById('hospitals').innerHTML = html;
             } catch (error) {
+                console.error('Error loading hospitals:', error);
                 document.getElementById('hospitals').innerHTML =
                     '<div class="error">Failed to load hospitals</div>';
             }
