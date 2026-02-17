@@ -763,23 +763,35 @@
                         <span class="metric-label">Current Round</span>
                         <span class="metric-value">${data.current_round} / ${data.total_rounds}</span>
                     </div>
+                    ${data.global_accuracy !== undefined ? `
                     <div class="metric">
                         <span class="metric-label">Global Accuracy</span>
                         <span class="metric-value">${(data.global_accuracy * 100).toFixed(2)}%</span>
                     </div>
+                    ` : ''}
+                    ${data.global_loss !== undefined ? `
                     <div class="metric">
                         <span class="metric-label">Global Loss</span>
                         <span class="metric-value">${data.global_loss.toFixed(4)}</span>
                     </div>
+                    ` : ''}
                     <div class="metric">
                         <span class="metric-label">Connected Hospitals</span>
-                        <span class="metric-value">${data.connected_hospitals}</span>
+                        <span class="metric-value">${data.connected_hospitals} / ${data.total_hospitals || data.connected_hospitals}</span>
                     </div>
+                    ${data.progress_percentage !== undefined ? `
                     <div class="progress-bar">
                         <div class="progress-fill" style="width: ${data.progress_percentage}%">
                             ${data.progress_percentage.toFixed(0)}%
                         </div>
                     </div>
+                    ` : `
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${(data.current_round / data.total_rounds * 100)}%">
+                            ${Math.round(data.current_round / data.total_rounds * 100)}%
+                        </div>
+                    </div>
+                    `}
                 `;
 
                 document.getElementById('training-status').innerHTML = html;
