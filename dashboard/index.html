@@ -736,9 +736,8 @@
         }
 
         // API Configuration
-        const API_URL = window.location.hostname === 'localhost'
-            ? 'http://localhost:8000'
-            : `http://${window.location.hostname}:8000`;
+        // Use relative paths - nginx on port 80 proxies /api/* to backend
+        const API_URL = '';
 
         const BLOCKCHAIN_URL = window.location.hostname === 'localhost'
             ? 'http://localhost:7050'
