@@ -49,131 +49,74 @@ class EncryptionManager:
     
     def encrypt_weights(self, weights: List[np.ndarray]) -> bytes:
         """
-        Encrypt model weights using Paillier encryption
-        
-        Args:
-            weights: List of numpy arrays (model weights)
-            
-        Returns:
-            Encrypted weights as bytes
+        Encrypt model weights using Paillier homomorphic encryption.
+        All weight values are encrypted (no demo cap).
+        Note: PHE is computationally expensive; use small models or reduce precision for speed.
         """
         if self.public_key is None:
             raise ValueError("Public key not set. Call generate_keypair() or set_public_key() first.")
-        
-        logger.info(f"Encrypting {len(weights)} weight arrays...")
-        
-        # Flatten and encrypt each weight array
+
+        logger.info(f"Encrypting {len(weights)} weight arrays (full HE)...")
+
         encrypted_weights = []
-        for i, weight_array in enumerate(weights):
-            # Flatten the array
-            flat_weights = weight_array.flatten()
-            
-            # Encrypt each value (this is the "hook" - in production, use batching)
-            # For demo, we'll encrypt a sample of values to show the concept
-            sample_size = min(100, len(flat_weights))  # Encrypt first 100 values as demo
-            encrypted_sample = [self.public_key.encrypt(float(w)) for w in flat_weights[:sample_size]]
-            
+        for weight_array in weights:
+            flat = weight_array.flatten().tolist()
+            # Encrypt every value
+            encrypted_vals = [self.public_key.encrypt(float(v)) for v in flat]
             encrypted_weights.append({
                 'shape': weight_array.shape,
-                'encrypted_sample': encrypted_sample,
-                'sample_size': sample_size,
-                'full_weights': flat_weights  # In production, this would be fully encrypted
+                'encrypted_vals': encrypted_vals,
             })
-        
-        # Serialize
+
         encrypted_bytes = pickle.dumps(encrypted_weights)
         logger.success(f"Encrypted weights: {len(encrypted_bytes)} bytes")
-        
         return encrypted_bytes
     
     def decrypt_weights(self, encrypted_bytes: bytes) -> List[np.ndarray]:
-        """
-        Decrypt model weights
-        
-        Args:
-            encrypted_bytes: Encrypted weights as bytes
-            
-        Returns:
-            List of numpy arrays (decrypted weights)
-        """
+        """Decrypt model weights encrypted with Paillier HE."""
         if self.private_key is None:
-            raise ValueError("Private key not set. Call generate_keypair() or set_private_key() first.")
-        
+            raise ValueError("Private key not set.")
+
         logger.info("Decrypting weights...")
-        
-        # Deserialize
         encrypted_weights = pickle.loads(encrypted_bytes)
-        
-        # Decrypt each weight array
+
         decrypted_weights = []
-        for enc_data in encrypted_weights:
-            # Decrypt the sample
-            decrypted_sample = [self.private_key.decrypt(enc_val) for enc_val in enc_data['encrypted_sample']]
-            
-            # For demo, we use the full weights (in production, all would be encrypted)
-            full_weights = enc_data['full_weights']
-            
-            # Reshape back to original shape
-            weight_array = np.array(full_weights).reshape(enc_data['shape'])
+        for enc in encrypted_weights:
+            decrypted_vals = [self.private_key.decrypt(v) for v in enc['encrypted_vals']]
+            weight_array = np.array(decrypted_vals, dtype=np.float32).reshape(enc['shape'])
             decrypted_weights.append(weight_array)
-        
+
         logger.success(f"Decrypted {len(decrypted_weights)} weight arrays")
-        
         return decrypted_weights
     
     def aggregate_encrypted_weights(self, encrypted_weights_list: List[bytes]) -> bytes:
         """
-        Perform homomorphic addition on encrypted weights
-        This demonstrates the power of HE - aggregation without decryption
-        
-        Args:
-            encrypted_weights_list: List of encrypted weight bytes
-            
-        Returns:
-            Aggregated encrypted weights
+        Homomorphic aggregation — adds encrypted weights without decrypting.
+        This is the core privacy guarantee of Paillier HE.
         """
-        logger.info(f"Aggregating {len(encrypted_weights_list)} encrypted weight sets...")
-        
-        # Deserialize all encrypted weights
-        all_encrypted = [pickle.loads(enc_bytes) for enc_bytes in encrypted_weights_list]
-        
-        # Aggregate (homomorphic addition)
+        logger.info(f"Homomorphic aggregation of {len(encrypted_weights_list)} encrypted sets...")
+
+        all_encrypted = [pickle.loads(b) for b in encrypted_weights_list]
+        n = len(all_encrypted)
         aggregated = []
-        num_weights = len(all_encrypted[0])
-        
-        for i in range(num_weights):
-            # Get all encrypted samples for this weight layer
-            encrypted_samples = [enc[i]['encrypted_sample'] for enc in all_encrypted]
-            
-            # Homomorphic addition (this works on encrypted values!)
-            aggregated_sample = []
-            sample_size = len(encrypted_samples[0])
-            
-            for j in range(sample_size):
-                # Add encrypted values
-                sum_encrypted = encrypted_samples[0][j]
-                for k in range(1, len(encrypted_samples)):
-                    sum_encrypted = sum_encrypted + encrypted_samples[k][j]
-                
-                # Average (divide by number of participants)
-                avg_encrypted = sum_encrypted / len(encrypted_samples)
-                aggregated_sample.append(avg_encrypted)
-            
-            # Aggregate full weights (simple averaging for demo)
-            full_weights_list = [enc[i]['full_weights'] for enc in all_encrypted]
-            avg_full_weights = np.mean(full_weights_list, axis=0)
-            
-            aggregated.append({
-                'shape': all_encrypted[0][i]['shape'],
-                'encrypted_sample': aggregated_sample,
-                'sample_size': sample_size,
-                'full_weights': avg_full_weights
-            })
-        
-        # Serialize
+
+        for layer_idx in range(len(all_encrypted[0])):
+            enc_vals_per_client = [all_encrypted[c][layer_idx]['encrypted_vals'] for c in range(n)]
+            shape = all_encrypted[0][layer_idx]['shape']
+            num_vals = len(enc_vals_per_client[0])
+
+            # Homomorphic addition then division (Paillier supports this natively)
+            agg_vals = []
+            for j in range(num_vals):
+                total = enc_vals_per_client[0][j]
+                for c in range(1, n):
+                    total = total + enc_vals_per_client[c][j]
+                agg_vals.append(total / n)  # Paillier supports scalar division
+
+            aggregated.append({'shape': shape, 'encrypted_vals': agg_vals})
+
         aggregated_bytes = pickle.dumps(aggregated)
         logger.success("Homomorphic aggregation complete")
-        
         return aggregated_bytes
     
     @staticmethod

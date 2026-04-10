@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoreChain | Login</title>
+    <meta name="description" content="CoreChain secure login for federated learning dashboard">
+    <link href="https://fonts.googleapis.com/css?family=Inter:400,600,700,900&display=swap" rel="stylesheet">
+    <style>
+        :root { --yellow: #fbbf24; --yellow-dark: #f59e0b; --text-dark: #1f2937; --text-light: #6b7280; --border: #e5e7eb; --card: #fff; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; background: #f8f9fa; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .bg { position: fixed; inset: 0; z-index: 0; background: linear-gradient(135deg, #fde68a22, #f8f9fa 50%, #fbbf2411); }
+        .card { background: var(--card); border-radius: 20px; box-shadow: 0 8px 40px rgba(0,0,0,0.1); padding: 2.5rem 2rem; width: 100%; max-width: 400px; position: relative; z-index: 1; border: 1px solid var(--border); }
+        .logo { display: flex; align-items: center; gap: 10px; margin-bottom: 2rem; justify-content: center; }
+        .logo-box { width: 42px; height: 42px; background: var(--yellow); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 1rem; color: var(--text-dark); }
+        .logo-text { font-size: 1.4rem; font-weight: 900; color: var(--yellow-dark); }
+        h2 { text-align: center; font-size: 1.3rem; font-weight: 700; color: var(--text-dark); margin-bottom: 0.4rem; }
+        .sub { text-align: center; font-size: 0.9rem; color: var(--text-light); margin-bottom: 1.8rem; }
+        label { display: block; font-weight: 600; font-size: 0.88rem; color: var(--text-dark); margin-bottom: 5px; }
+        input { width: 100%; padding: 11px 14px; border: 1.5px solid var(--border); border-radius: 10px; font-size: 0.95rem; font-family: inherit; outline: none; transition: border-color 0.2s; background: #f8f9fa; color: var(--text-dark); }
+        input:focus { border-color: var(--yellow); background: #fff; }
+        .field { margin-bottom: 1.2rem; }
+        .btn { width: 100%; padding: 13px; background: var(--yellow); border: none; border-radius: 12px; font-size: 1rem; font-weight: 700; color: var(--text-dark); cursor: pointer; transition: all 0.2s; margin-top: 0.5rem; box-shadow: 0 4px 16px rgba(251,191,36,0.35); }
+        .btn:hover { background: var(--yellow-dark); transform: translateY(-1px); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .error-msg { background: #fee2e2; color: #dc2626; padding: 10px 14px; border-radius: 8px; font-size: 0.88rem; margin-bottom: 1rem; display: none; }
+        .hint { background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.3); border-radius: 10px; padding: 10px 14px; font-size: 0.82rem; color: var(--text-light); margin-top: 1.2rem; }
+        .hint b { color: var(--text-dark); }
+        .role-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75em; font-weight: 700; margin-left: 6px; }
+        .role-admin { background: rgba(239,68,68,0.1); color: #dc2626; }
+        .role-researcher { background: rgba(59,130,246,0.1); color: #1d4ed8; }
+        .back { text-align: center; margin-top: 1.2rem; }
+        .back a { color: var(--text-light); text-decoration: none; font-size: 0.88rem; }
+        .back a:hover { color: var(--text-dark); }
+    </style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="card">
+    <div class="logo">
+        <div class="logo-box">CC</div>
+        <div class="logo-text">CoreChain</div>
+    </div>
+    <h2>Welcome Back</h2>
+    <p class="sub">Sign in to access the federated learning dashboard</p>
+    <div class="error-msg" id="errMsg"></div>
+    <form onsubmit="doLogin(event)">
+        <div class="field">
+            <label for="uid">User ID</label>
+            <input id="uid" type="text" placeholder="e.g. admin" autocomplete="username" required>
+        </div>
+        <div class="field">
+            <label for="pwd">Password</label>
+            <input id="pwd" type="password" placeholder="Enter password" autocomplete="current-password" required>
+        </div>
+        <button class="btn" type="submit" id="submitBtn">Sign In</button>
+    </form>
+    <div class="hint">
+        <b>Default accounts:</b><br>
+        <code>admin</code> / <code>admin123</code> <span class="role-badge role-admin">admin</span><br>
+        <code>researcher1</code> / <code>research123</code> <span class="role-badge role-researcher">researcher</span>
+    </div>
+    <div class="back"><a href="/">&larr; Back to Dashboard</a></div>
+</div>
+<script>
+async function doLogin(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    const err = document.getElementById('errMsg');
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+    err.style.display = 'none';
+    try {
+        const r = await fetch('/auth/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ user_id: document.getElementById('uid').value, password: document.getElementById('pwd').value })
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || 'Login failed');
+        localStorage.setItem('cc_token', d.token);
+        localStorage.setItem('cc_user', JSON.stringify(d.user));
+        window.location.href = '/';
+    } catch (ex) {
+        err.textContent = ex.message;
+        err.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+    }
+}
+// If already logged in, redirect
+if (localStorage.getItem('cc_token')) window.location.href = '/';
+</script>
+</body>
+</html>

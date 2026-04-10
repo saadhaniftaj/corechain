@@ -1,0 +1,39 @@
+# ========================================
+# EC2 Console Commands - Copy & Paste
+# ========================================
+
+# Step 1: Navigate to project directory
+cd /home/ubuntu/corechain 2>/dev/null || cd /var/www/corechain 2>/dev/null || cd ~/corechain
+
+# Step 2: Pull latest changes from GitHub
+git pull origin main
+
+# Step 3: Deploy the fixed dashboard
+sudo cp dashboard/index.html /var/www/html/index.html
+
+# Step 4: Verify the fix was applied
+grep "Use relative paths" /var/www/html/index.html
+
+# Step 5: Check if nginx is running
+sudo systemctl status nginx | head -5
+
+# ========================================
+# Expected Output
+# ========================================
+# After Step 2: Should see "Updating c3658ac..76bb227" or "Already up to date"
+# After Step 3: No output (success)
+# After Step 4: Should see "// Use relative paths - nginx on port 80 proxies /api/* to backend"
+# After Step 5: Should see "active (running)"
+
+# ========================================
+# After Running These Commands
+# ========================================
+# 1. Go to your browser
+# 2. Clear cache: Ctrl+Shift+R (or Cmd+Shift+R on Mac)
+# 3. Navigate to: http://54.173.119.88
+# 4. Dashboard should show all metrics
+# 5. Refresh the page - it should STAY working!
+
+echo ""
+echo "✅ Dashboard deployed successfully!"
+echo "Clear browser cache and refresh: http://54.173.119.88"

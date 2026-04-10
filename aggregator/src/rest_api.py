@@ -1,10 +1,12 @@
 """
 REST API for Dashboard
-Provides training metrics and blockchain data
+Provides training metrics, blockchain data, and auth endpoints
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from loguru import logger
@@ -12,7 +14,20 @@ import uvicorn
 import os
 
 from blockchain_client import BlockchainClient
+from auth import create_token, get_current_user, require_role
+from user_store import seed_default_users, authenticate, create_user, list_users, get_user, delete_user
 
+
+# --- Pydantic models ---
+class LoginRequest(BaseModel):
+    user_id: str
+    password: str
+
+class CreateUserRequest(BaseModel):
+    user_id: str
+    password: str
+    role: str
+    name: str
 
 # Initialize FastAPI
 app = FastAPI(
@@ -20,6 +35,11 @@ app = FastAPI(
     description="REST API for CoreChain dashboard",
     version="1.0.0"
 )
+
+@app.on_event('startup')
+async def startup():
+    seed_default_users()
+    logger.info('CoreChain API started, default users seeded')
 
 # CORS middleware
 app.add_middleware(
@@ -51,11 +71,63 @@ registered_hospitals = {}
 
 @app.get("/")
 async def root():
-    """API root"""
+    return {"name": "CoreChain Aggregator API", "version": "1.0.0", "status": "running"}
+
+
+# --- AUTH ROUTES ---
+@app.post("/auth/login")
+async def login(req: LoginRequest):
+    """Login and receive JWT token"""
+    user = authenticate(req.user_id, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail='Invalid credentials')
+    token = create_token(user['user_id'], user['role'])
+    return {'token': token, 'user': user, 'expires_in': 86400}
+
+
+@app.get("/auth/me")
+async def me(current_user=Depends(get_current_user)):
+    """Get current user info"""
+    return current_user
+
+
+@app.get("/auth/users")
+async def get_users(current_user=Depends(require_role('admin'))):
+    """List all users (admin only)"""
+    return {'users': list_users()}
+
+
+@app.post("/auth/users")
+async def add_user(req: CreateUserRequest, current_user=Depends(require_role('admin'))):
+    """Create a new user (admin only)"""
+    try:
+        user = create_user(req.user_id, req.password, req.role, req.name)
+        return {'success': True, 'user': user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.delete("/auth/users/{user_id}")
+async def remove_user(user_id: str, current_user=Depends(require_role('admin'))):
+    """Delete a user (admin only)"""
+    if not delete_user(user_id):
+        raise HTTPException(status_code=404, detail='User not found')
+    return {'success': True}
+
+
+# Alias /api/status -> /api/training/status for dashboard compatibility
+@app.get("/api/status")
+async def get_status():
+    """Alias for training status"""
     return {
-        "name": "CoreChain Aggregator API",
-        "version": "1.0.0",
-        "status": "running"
+        "current_round": training_state['current_round'],
+        "total_rounds": training_state['total_rounds'],
+        "global_accuracy": training_state['global_accuracy'],
+        "global_loss": training_state['global_loss'],
+        "is_training": training_state['is_training'],
+        "connected_hospitals": len(registered_hospitals),
+        "total_hospitals": len(registered_hospitals),
+        "progress_percentage": (training_state['current_round'] / training_state['total_rounds']) * 100 if training_state['total_rounds'] > 0 else 0
     }
 
 

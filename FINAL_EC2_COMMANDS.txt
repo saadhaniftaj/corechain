@@ -1,0 +1,21 @@
+# ========================================
+# FINAL DASHBOARD FIX - EC2 Commands
+# ========================================
+# Copy and paste these commands into your EC2 terminal
+
+# Navigate to project directory
+cd ~/corechain-build
+
+# Pull the latest fix from GitHub
+git pull origin main
+
+# Deploy the corrected dashboard to Docker container
+sudo docker cp ~/corechain-build/dashboard/index.html $(sudo docker ps -q -f name=aggregator):/var/www/html/index.html
+
+# Verify the fix was applied
+sudo docker exec $(sudo docker ps -q -f name=aggregator) grep "api/status" /var/www/html/index.html | head -2
+
+# Done!
+echo ""
+echo "✅ Dashboard fix deployed!"
+echo "Clear browser cache (Ctrl+Shift+R) and refresh: http://54.173.119.88"

@@ -1,0 +1,32 @@
+name: CoreChain Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            set -e
+            cd ~/corechain-build
+            git pull origin main
+            # Copy updated dashboard into running container
+            CONTAINER=$(sudo docker ps -q -f name=aggregator)
+            sudo docker cp ~/corechain-build/dashboard/index.html $CONTAINER:/var/www/html/index.html
+            sudo docker cp ~/corechain-build/dashboard/login.html $CONTAINER:/var/www/html/login.html
+            # Copy updated python files
+            sudo docker cp ~/corechain-build/aggregator/src/. $CONTAINER:/app/aggregator/src/
+            sudo docker cp ~/corechain-build/shared/encryption.py $CONTAINER:/app/shared/encryption.py
+            # Restart services gracefully
+            sudo docker exec $CONTAINER supervisorctl restart aggregator
+            echo "Deploy complete"

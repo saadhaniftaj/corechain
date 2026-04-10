@@ -1,0 +1,18 @@
+# ========================================
+# FINAL DASHBOARD FIX - NULL SAFE VERSION
+# ========================================
+# This fix handles missing API fields gracefully
+
+# Copy and paste these commands into your EC2 terminal:
+
+cd ~/corechain-build
+git pull origin main
+sudo docker cp ~/corechain-build/dashboard/index.html $(sudo docker ps -q -f name=aggregator):/var/www/html/index.html
+echo ""
+echo "✅ Dashboard fix deployed!"
+echo "Clear browser cache (Ctrl+Shift+R) and refresh: http://54.173.119.88"
+echo "The dashboard should now show:"
+echo "  - Status: running"
+echo "  - Current Round: 2 / 10"
+echo "  - Connected Hospitals: 1 / 1"
+echo "  - Progress: 20%"
