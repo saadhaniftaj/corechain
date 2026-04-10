@@ -5,8 +5,6 @@ Provides training metrics, blockchain data, and auth endpoints
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Optional
 from loguru import logger
@@ -134,14 +132,16 @@ async def get_status():
 @app.get("/api/training/status")
 async def get_training_status():
     """Get current training status"""
+    total = training_state['total_rounds']
+    current = training_state['current_round']
     return {
-        "current_round": training_state['current_round'],
-        "total_rounds": training_state['total_rounds'],
+        "current_round": current,
+        "total_rounds": total,
         "global_accuracy": training_state['global_accuracy'],
         "global_loss": training_state['global_loss'],
         "is_training": training_state['is_training'],
         "connected_hospitals": len(registered_hospitals),
-        "progress_percentage": (training_state['current_round'] / training_state['total_rounds']) * 100
+        "progress_percentage": (current / total * 100) if total > 0 else 0
     }
 
 

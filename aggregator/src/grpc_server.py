@@ -28,6 +28,12 @@ except ImportError:
 
 from shared.encryption import EncryptionManager
 
+# Sync hospital registrations to REST API state
+try:
+    from rest_api import registered_hospitals as api_registered_hospitals
+except ImportError:
+    api_registered_hospitals = {}
+
 
 class ModelAggregationServicer:
     """gRPC servicer for model aggregation"""
@@ -59,14 +65,18 @@ class ModelAggregationServicer:
         
         logger.info(f"Registering hospital: {hospital_id}")
         
-        # Store hospital info
-        self.registered_hospitals[hospital_id] = {
+        hospital_info = {
             'hospital_id': hospital_id,
             'hospital_name': request.hospital_name,
             'dataset_size': request.dataset_size,
             'dataset_type': request.dataset_type,
+            'status': 'connected',
             'registered_at': datetime.now().isoformat()
         }
+
+        # Store hospital info locally AND sync to REST API state
+        self.registered_hospitals[hospital_id] = hospital_info
+        api_registered_hospitals[hospital_id] = hospital_info
         
         # Log to blockchain
         self.blockchain_client.log_transaction({

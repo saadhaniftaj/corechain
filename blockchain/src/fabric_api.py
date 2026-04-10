@@ -168,6 +168,24 @@ async def get_stats():
     return blockchain.get_stats()
 
 
+@app.get("/api/blockchain/transactions")
+async def get_all_transactions(limit: int = 50):
+    """Get all transactions across all blocks, newest first"""
+    all_txs = []
+    for block in blockchain.get_chain():
+        for tx in block.get('transactions', []):
+            all_txs.append({
+                **tx,
+                'block_index': block['index'],
+                'block_hash': block['hash']
+            })
+    all_txs.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+    return {
+        "transactions": all_txs[:limit],
+        "total": len(all_txs)
+    }
+
+
 @app.get("/api/blockchain/transactions/type/{tx_type}")
 async def get_transactions_by_type(tx_type: str):
     """Get all transactions of a specific type"""

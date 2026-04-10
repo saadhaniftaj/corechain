@@ -12,6 +12,14 @@ from typing import List, Tuple, Dict, Optional, Union
 import numpy as np
 import os
 
+# Import shared training state so dashboard shows live metrics
+try:
+    from rest_api import training_state, registered_hospitals
+except ImportError:
+    # Fallback if imported before rest_api is initialized
+    training_state = {}
+    registered_hospitals = {}
+
 
 class CoreChainStrategy(FedAvg):
     """Custom Federated Averaging strategy for CoreChain"""
@@ -75,8 +83,15 @@ class CoreChainStrategy(FedAvg):
             f"Round {server_round} aggregation complete: "
             f"accuracy={weighted_accuracy:.4f}, loss={weighted_loss:.4f}"
         )
-        
-        # Log aggregation to blockchain
+
+        # ✅ Update shared training state for dashboard
+        if training_state:
+            training_state['current_round'] = server_round
+            training_state['global_accuracy'] = weighted_accuracy
+            training_state['global_loss'] = weighted_loss
+            training_state['is_training'] = True
+            training_state['accuracy_history'].append(weighted_accuracy)
+            training_state['loss_history'].append(weighted_loss)
         if self.blockchain_client:
             self.blockchain_client.log_transaction({
                 'type': 'MODEL_AGGREGATION',
@@ -151,7 +166,12 @@ class CoreChainStrategy(FedAvg):
             f"Round {server_round} evaluation complete: "
             f"accuracy={weighted_accuracy:.4f}, loss={aggregated_loss:.4f}"
         )
-        
+
+        # ✅ Update shared training state accuracy from evaluation
+        if training_state:
+            training_state['global_accuracy'] = weighted_accuracy
+            training_state['global_loss'] = float(aggregated_loss) if aggregated_loss else training_state.get('global_loss', 0.0)
+
         # Broadcast to dashboard
         if self.websocket_server:
             import asyncio
@@ -248,7 +268,12 @@ def start_flower_server(
         config=fl.server.ServerConfig(num_rounds=rounds),
         strategy=strategy
     )
-    
+
+    # Mark training complete
+    if training_state:
+        training_state['is_training'] = False
+        logger.success("All FL rounds complete — training_state marked done")
+
     logger.success("Flower server completed all rounds")
 
 
