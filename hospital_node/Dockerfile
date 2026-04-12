@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    libgl1-mesa-glx \
+    libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -17,5 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
-# Run the hospital node
-CMD ["python", "src/main.py"]
+# Hospital dashboard port
+EXPOSE 3000
+
+# Entrypoint validates env vars and data mount
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]

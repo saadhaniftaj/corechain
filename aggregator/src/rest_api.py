@@ -80,7 +80,22 @@ async def login(req: LoginRequest):
     if not user:
         raise HTTPException(status_code=401, detail='Invalid credentials')
     token = create_token(user['user_id'], user['role'])
-    return {'token': token, 'user': user, 'expires_in': 86400}
+    return {'token': token, 'user': user, 'expires_in': 1800}
+
+
+@app.get("/auth/verify")
+async def verify_token(current_user=Depends(get_current_user)):
+    """Verify JWT is still valid — used by dashboard auth gate"""
+    import time
+    exp = current_user.get('exp', 0)
+    remaining = max(0, int(exp - time.time()))
+    return {'valid': True, 'user_id': current_user.get('sub'), 'role': current_user.get('role'), 'expires_in': remaining}
+
+
+@app.post("/auth/logout")
+async def logout():
+    """Logout — client drops the token, server is stateless"""
+    return {'success': True, 'message': 'Logged out'}
 
 
 @app.get("/auth/me")

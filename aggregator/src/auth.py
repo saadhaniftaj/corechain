@@ -13,7 +13,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 SECRET_KEY = os.getenv('JWT_SECRET', 'corechain-secret-change-in-prod-2026')
 ALGORITHM = 'HS256'
-TOKEN_EXPIRE_HOURS = 24
+TOKEN_EXPIRE_MINUTES = 30
 
 security = HTTPBearer(auto_error=False)
 
@@ -23,7 +23,7 @@ def create_token(user_id: str, role: str) -> str:
         'sub': user_id,
         'role': role,
         'iat': datetime.utcnow(),
-        'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRE_HOURS)
+        'exp': datetime.utcnow() + timedelta(minutes=TOKEN_EXPIRE_MINUTES)
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 

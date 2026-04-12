@@ -22,3 +22,7 @@ requests==2.31.0
 
 # Logging
 loguru==0.7.2
+
+# Dashboard
+fastapi==0.109.2
+uvicorn==0.27.0.post1

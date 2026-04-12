@@ -5,39 +5,45 @@ services:
     build:
       context: ./hospital_node
       dockerfile: Dockerfile
-    container_name: corechain_hospital_${HOSPITAL_ID:-1}
-    network_mode: host
+    container_name: corechain_hospital_${HOSPITAL_ID:-hospital_1}
+    ports:
+      - "3000:3000"
     environment:
-      # IMPORTANT: Update these values for each hospital laptop
       - HOSPITAL_ID=${HOSPITAL_ID:-hospital_1}
       - HOSPITAL_NAME=${HOSPITAL_NAME:-General Hospital 1}
-      - AGGREGATOR_IP=${AGGREGATOR_IP:-localhost}
+      - AGGREGATOR_IP=${AGGREGATOR_IP:-54.173.119.88}
       - AGGREGATOR_PORT=${AGGREGATOR_PORT:-50051}
-      
+      - FLOWER_PORT=${FLOWER_PORT:-8080}
+
       # Dataset configuration
       - DATASET_PATH=/data
-      - DATASET_TYPE=${DATASET_TYPE:-shenzhen}  # or 'montgomery'
-      
+      - DATASET_TYPE=${DATASET_TYPE:-shenzhen}
+
       # Training configuration
-      - LOCAL_EPOCHS=5
-      - BATCH_SIZE=32
-      - LEARNING_RATE=0.001
-      
+      - LOCAL_EPOCHS=${LOCAL_EPOCHS:-5}
+      - BATCH_SIZE=${BATCH_SIZE:-32}
+      - LEARNING_RATE=${LEARNING_RATE:-0.001}
+
       # Encryption
       - ENABLE_ENCRYPTION=true
     volumes:
       - ./hospital_node/src:/app/src
       - ./shared:/app/shared
       - ./.proto:/app/proto
-      - ./data/tb_dataset:/data
-      - ./models/hospital_${HOSPITAL_ID:-1}:/app/models
+      - ${DATA_PATH:-./data/tb_dataset}:/data
+      - ./models/hospital_${HOSPITAL_ID:-hospital_1}:/app/models
     restart: unless-stopped
-    command: python src/main.py
 
-# To run this on different laptops:
-# 1. Copy this file to each hospital laptop
-# 2. Create a .env file with:
-#    HOSPITAL_ID=hospital_1
-#    HOSPITAL_NAME=General Hospital 1
-#    AGGREGATOR_IP=192.168.1.100  (IP of aggregator laptop)
-# 3. Run: docker-compose -f docker-compose.hospital.yml up
+# ===================================================================
+# USAGE:
+#   1. Create a .env file:
+#        HOSPITAL_ID=hospital_1
+#        HOSPITAL_NAME=General Hospital 1
+#        AGGREGATOR_IP=54.173.119.88
+#        DATA_PATH=/path/to/your/xray/images
+#
+#   2. Run:
+#        docker-compose -f docker-compose.hospital.yml up --build
+#
+#   3. Dashboard available at: http://localhost:3000
+# ===================================================================

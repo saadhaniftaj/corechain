@@ -16,10 +16,10 @@ from datetime import datetime
 import sys
 
 # Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from hospital_node.src.data_loader import TBDataLoader
-from hospital_node.src.tb_model import TBDetectionModel
+from data_loader import TBDataLoader
+from tb_model import TBDetectionModel
 
 # Configuration
 DASHBOARD_DIR = Path(__file__).parent.parent / "dashboard"

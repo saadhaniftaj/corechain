@@ -61,7 +61,6 @@
         <code>admin</code> / <code>admin123</code> <span class="role-badge role-admin">admin</span><br>
         <code>researcher1</code> / <code>research123</code> <span class="role-badge role-researcher">researcher</span>
     </div>
-    <div class="back"><a href="/">&larr; Back to Dashboard</a></div>
 </div>
 <script>
 async function doLogin(e) {
@@ -81,6 +80,7 @@ async function doLogin(e) {
         if (!r.ok) throw new Error(d.detail || 'Login failed');
         localStorage.setItem('cc_token', d.token);
         localStorage.setItem('cc_user', JSON.stringify(d.user));
+        localStorage.setItem('cc_token_time', Date.now().toString());
         window.location.href = '/';
     } catch (ex) {
         err.textContent = ex.message;
@@ -90,8 +90,19 @@ async function doLogin(e) {
         btn.textContent = 'Sign In';
     }
 }
-// If already logged in, redirect
-if (localStorage.getItem('cc_token')) window.location.href = '/';
+// If already logged in with a valid session, redirect
+(function() {
+    const token = localStorage.getItem('cc_token');
+    const loginTime = parseInt(localStorage.getItem('cc_token_time') || '0', 10);
+    if (token && (Date.now() - loginTime < 30 * 60 * 1000)) {
+        window.location.href = '/';
+    } else {
+        // Clear stale data
+        localStorage.removeItem('cc_token');
+        localStorage.removeItem('cc_user');
+        localStorage.removeItem('cc_token_time');
+    }
+})();
 </script>
 </body>
 </html>

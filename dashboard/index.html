@@ -175,9 +175,10 @@
             <a href="#rewards" onclick="scrollToSection('rewards',this)">Rewards</a>
             <a href="#audit" onclick="scrollToSection('audit',this)">Audit</a>
         </div>
-        <div class="nav-right">
-            <button class="btn-login" onclick="window.location.href='/login'">Login</button>
+        <div class="nav-right" id="nav-right">
+            <span id="user-badge" style="font-size:0.85rem;font-weight:600;color:var(--text-light)"></span>
             <button class="btn-refresh" onclick="loadAllData()">&#8635; Refresh</button>
+            <button class="btn-login" id="btn-auth" onclick="handleAuth()">Login</button>
         </div>
     </div>
 </nav>
@@ -296,6 +297,46 @@
 </footer>
 
 <script>
+// === AUTH GATE ===
+(function authGate() {
+    const token = localStorage.getItem('cc_token');
+    const loginTime = parseInt(localStorage.getItem('cc_token_time') || '0', 10);
+    const SESSION_MS = 30 * 60 * 1000; // 30 minutes
+    if (!token || (Date.now() - loginTime > SESSION_MS)) {
+        localStorage.removeItem('cc_token');
+        localStorage.removeItem('cc_user');
+        localStorage.removeItem('cc_token_time');
+        window.location.href = '/login';
+        return;
+    }
+})();
+
+function getToken() { return localStorage.getItem('cc_token'); }
+function authHeaders() { return { 'Authorization': 'Bearer ' + getToken() }; }
+function handleAuth() {
+    if (getToken()) {
+        localStorage.removeItem('cc_token');
+        localStorage.removeItem('cc_user');
+        localStorage.removeItem('cc_token_time');
+        window.location.href = '/login';
+    } else {
+        window.location.href = '/login';
+    }
+}
+
+// Show user badge + logout button
+(function renderUserBadge() {
+    const user = JSON.parse(localStorage.getItem('cc_user') || 'null');
+    const badge = document.getElementById('user-badge');
+    const btn = document.getElementById('btn-auth');
+    if (user && getToken()) {
+        badge.innerHTML = `${user.name || user.user_id} <span style="background:rgba(251,191,36,0.2);color:#b45309;padding:2px 8px;border-radius:10px;font-size:0.75em;margin-left:4px">${user.role}</span>`;
+        btn.textContent = 'Logout';
+        btn.style.borderColor = '#ef4444';
+        btn.style.color = '#ef4444';
+    }
+})();
+
 // --- BG Particles ---
 const $bg = document.getElementById('bgParticles');
 for (let i = 0; i < 120; i++) {
@@ -324,7 +365,7 @@ function scrollToSection(id, el) {
 // --- Training Status ---
 async function loadTrainingStatus() {
     try {
-        const r = await fetch(`${API_URL}/api/status`);
+        const r = await fetch(`${API_URL}/api/status`, {headers: authHeaders()});
         if (!r.ok) throw new Error();
         const d = await r.json();
 
@@ -375,7 +416,7 @@ function initCharts() {
 
 async function loadMetrics() {
     try {
-        const r = await fetch(`${API_URL}/api/metrics/history`);
+        const r = await fetch(`${API_URL}/api/metrics/history`, {headers: authHeaders()});
         if (!r.ok) return;
         const d = await r.json();
         const acc = d.accuracy_history || [];
@@ -395,7 +436,7 @@ async function loadMetrics() {
 // --- Hospitals ---
 async function loadHospitals() {
     try {
-        const r = await fetch(`${API_URL}/api/hospitals`);
+        const r = await fetch(`${API_URL}/api/hospitals`, {headers: authHeaders()});
         const d = await r.json();
         const hospitals = Array.isArray(d) ? d : (d.hospitals || []);
         const el = document.getElementById('hospitals-list');
@@ -445,7 +486,7 @@ async function loadTransactions() {
     const el = document.getElementById('transactions');
     try {
         // Try aggregator proxy first (port 80), fallback to blockchain direct
-        let r = await fetch(`${API_URL}/api/blockchain/transactions?limit=15`);
+        let r = await fetch(`${API_URL}/api/blockchain/transactions?limit=15`, {headers: authHeaders()});
         if (!r.ok) r = await fetch(`${BLOCKCHAIN_URL}/api/blockchain/chain`);
         if (!r.ok) throw new Error();
         const d = await r.json();
@@ -489,7 +530,7 @@ async function loadTransactions() {
 // --- Rewards & Leaderboard ---
 async function loadRewards() {
     try {
-        const r = await fetch(`${API_URL}/api/rewards`);
+        const r = await fetch(`${API_URL}/api/rewards`, {headers: authHeaders()});
         if (!r.ok) throw new Error();
         const d = await r.json();
         const lb = d.leaderboard || [];
