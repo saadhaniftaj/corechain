@@ -119,7 +119,7 @@ class TBDataLoader:
         logger.info("Creating synthetic TB dataset for demonstration...")
         
         # Create synthetic images (random noise with some structure)
-        num_samples = 1000
+        num_samples = 10
         
         images = []
         labels = []

@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile
     container_name: corechain_hospital_${HOSPITAL_ID:-hospital_1}
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - HOSPITAL_ID=${HOSPITAL_ID:-hospital_1}
       - HOSPITAL_NAME=${HOSPITAL_NAME:-General Hospital 1}
@@ -33,6 +33,7 @@ services:
       - ${DATA_PATH:-./data/tb_dataset}:/data
       - ./models/hospital_${HOSPITAL_ID:-hospital_1}:/app/models
     restart: unless-stopped
+    command: ["sh", "-c", "./entrypoint.sh && python src/main_with_dashboard.py"]
 
 # ===================================================================
 # USAGE:

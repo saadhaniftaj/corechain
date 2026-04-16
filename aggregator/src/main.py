@@ -115,7 +115,17 @@ def main():
     flower_thread.start()
     logger.success(f"Flower server started on port 8080")
     
-    # 3. WebSocket server (run in main thread with asyncio)
+    # 3. gRPC server
+    from grpc_server import serve as run_grpc_server
+    grpc_thread = threading.Thread(
+        target=run_grpc_server,
+        args=(grpc_port,),
+        daemon=True
+    )
+    grpc_thread.start()
+    logger.success(f"gRPC server started on port {grpc_port}")
+
+    # 4. WebSocket server (run in main thread with asyncio)
     logger.info("Starting WebSocket server in main thread...")
     
     try:

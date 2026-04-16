@@ -20,6 +20,7 @@ from datetime import datetime
 
 # Import generated protobuf code (will be generated)
 try:
+    sys.path.insert(0, '/app/shared')
     from shared import corechain_pb2, corechain_pb2_grpc
 except ImportError:
     logger.warning("Protobuf files not generated yet. Run: python -m grpc_tools.protoc -I.proto --python_out=./shared --grpc_python_out=./shared .proto/corechain.proto")

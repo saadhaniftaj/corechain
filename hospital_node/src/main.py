@@ -8,8 +8,9 @@ import sys
 from loguru import logger
 import time
 
-# Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+# Add parent directory
+sys.path.insert(0, '/app')
+sys.path.insert(0, os.path.dirname(__file__))
 
 from fl_trainer import create_flower_client
 from grpc_client import AggregatorClient
@@ -69,6 +70,11 @@ def main():
         )
         if grpc_client.connect():
             logger.success("gRPC channel established")
+            grpc_client.register(
+                hospital_name=hospital_name,
+                dataset_size=1000,
+                dataset_type=dataset_type
+            )
         else:
             logger.warning("gRPC connection failed — continuing with Flower only")
             grpc_client = None

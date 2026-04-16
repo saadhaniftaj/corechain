@@ -6,11 +6,14 @@ Communicates with aggregator server
 import grpc
 import sys
 import os
-
-# Add proto path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-
+from pathlib import Path
 from loguru import logger
+
+# Add parent directory and app root to path
+sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, '/app')
+sys.path.insert(0, '/app/shared')
 from typing import List
 import numpy as np
 from datetime import datetime
@@ -18,8 +21,8 @@ from datetime import datetime
 # Import generated protobuf code
 try:
     from shared import corechain_pb2, corechain_pb2_grpc
-except ImportError:
-    logger.warning("Protobuf files not generated yet")
+except (ImportError, OSError) as e:
+    logger.warning(f"Protobuf files not generated yet or FS deadlock: {e}")
     corechain_pb2 = None
     corechain_pb2_grpc = None
 

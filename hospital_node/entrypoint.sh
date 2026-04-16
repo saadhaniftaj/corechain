@@ -47,4 +47,4 @@ echo ""
 
 # --- Launch ---
 echo "🚀 Starting hospital node..."
-exec python src/main.py
+exec python src/main_with_dashboard.py

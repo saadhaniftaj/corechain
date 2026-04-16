@@ -140,6 +140,7 @@ async def get_status():
         "is_training": training_state['is_training'],
         "connected_hospitals": len(registered_hospitals),
         "total_hospitals": len(registered_hospitals),
+        "blockchain_connected": blockchain_client.validate_chain(),
         "progress_percentage": (training_state['current_round'] / training_state['total_rounds']) * 100 if training_state['total_rounds'] > 0 else 0
     }
 
@@ -156,6 +157,7 @@ async def get_training_status():
         "global_loss": training_state['global_loss'],
         "is_training": training_state['is_training'],
         "connected_hospitals": len(registered_hospitals),
+        "blockchain_connected": blockchain_client.validate_chain(),
         "progress_percentage": (current / total * 100) if total > 0 else 0
     }
 

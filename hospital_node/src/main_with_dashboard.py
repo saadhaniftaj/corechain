@@ -9,6 +9,7 @@ import threading
 from loguru import logger
 
 # Add parent directory to path
+sys.path.insert(0, '/app')
 sys.path.insert(0, os.path.dirname(__file__))
 
 from dashboard_api import app

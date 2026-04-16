@@ -71,35 +71,6 @@ def update_dashboard_state(**kwargs):
             hospital_state[key] = value
 
 
-# Initialize with mock training history for display
-def initialize_mock_history():
-    """Initialize with recent training data"""
-    mock_history = [
-        {
-            "round_number": 1,
-            "timestamp": "2026-02-08 22:51:38",
-            "accuracy": 0.7259,
-            "loss": 0.5842,
-            "tokens_earned": 50,
-            "status": "completed"
-        },
-        {
-            "round_number": 2,
-            "timestamp": "2026-02-08 23:41:34",
-            "accuracy": 0.7316,
-            "loss": 0.5693,
-            "tokens_earned": 50,
-            "status": "completed"
-        },
-    ]
-    
-    if not HISTORY_FILE.exists():
-        save_history(mock_history)
-
-
-# Initialize mock data on startup
-initialize_mock_history()
-
 
 
 def load_history():
