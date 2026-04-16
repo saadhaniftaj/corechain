@@ -54,12 +54,6 @@ def main():
     
     # Wait for Flower server to be reachable
     flower_server_address = f"{aggregator_ip}:{flower_port}"
-    logger.info(f"Checking aggregator connectivity at {flower_server_address}...")
-    
-    if not wait_for_aggregator(aggregator_ip, flower_port, timeout=120):
-        logger.warning("Aggregator not reachable after 120s — attempting connection anyway")
-    else:
-        logger.success("Aggregator is reachable!")
     
     # Try gRPC registration (optional — Flower handles its own connection)
     try:
@@ -90,20 +84,21 @@ def main():
         dataset_type=dataset_type
     )
     
-    logger.info(f"Connecting to Flower server at {flower_server_address}...")
-    
-    try:
-        fl.client.start_numpy_client(
-            server_address=flower_server_address,
-            client=flower_client
-        )
-        
-        logger.success("Federated learning completed successfully!")
-        
-    except Exception as e:
-        logger.error(f"Flower client error: {e}")
-        import traceback
-        traceback.print_exc()
+    # Connect to Flower server with retry loop
+    while True:
+        try:
+            logger.info(f"Connecting to Flower server at {flower_server_address}...")
+            fl.client.start_numpy_client(
+                server_address=flower_server_address,
+                client=flower_client
+            )
+            logger.success("Flower round complete")
+            break
+        except Exception as e:
+            logger.warning(f"Flower server not ready yet: {e} — retrying in 5 seconds...")
+            time.sleep(5)
+            import traceback
+            traceback.print_exc()
     
     finally:
         if grpc_client:
