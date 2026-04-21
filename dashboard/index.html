@@ -129,6 +129,23 @@
         .success-msg { background: rgba(16,185,129,0.1); color: #059669; padding: 12px; border-radius: 8px; margin-bottom: 12px; }
         .empty-msg { text-align: center; color: var(--text-light); padding: 30px; font-size: 0.95em; }
 
+        /* --- SPRINT BAR --- */
+        .sprint-bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.8rem 0; overflow-x: auto; }
+        .sprint-pill { padding: 8px 18px; border-radius: 24px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: 2px solid var(--border); background: var(--card); color: var(--text-light); transition: all 0.25s; white-space: nowrap; position: relative; }
+        .sprint-pill:hover { border-color: var(--yellow); color: var(--text-dark); transform: translateY(-1px); }
+        .sprint-pill.active { border-color: var(--yellow); background: linear-gradient(135deg, #fef3c7, #fffbeb); color: var(--text-dark); box-shadow: 0 3px 12px rgba(251,191,36,0.25); }
+        .sprint-pill .sprint-acc { font-size: 0.75rem; font-weight: 600; color: var(--green); display: block; margin-top: 2px; }
+        .sprint-pill.active .sprint-acc { color: #059669; }
+        .sprint-pill.sprint-live { border-color: var(--green); }
+        .sprint-pill.sprint-live::after { content: ''; position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse-dot 2s infinite; }
+        @keyframes pulse-dot { 0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.6); } 70% { box-shadow: 0 0 0 6px rgba(16,185,129,0); } 100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); } }
+        .btn-new-sprint { padding: 8px 20px; border-radius: 24px; font-size: 0.85rem; font-weight: 700; cursor: pointer; border: 2px dashed var(--yellow); background: transparent; color: var(--yellow-dark); transition: all 0.25s; white-space: nowrap; }
+        .btn-new-sprint:hover { background: rgba(251,191,36,0.1); transform: translateY(-1px); }
+        .sprint-section-title { font-size: 0.85rem; font-weight: 700; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.08em; margin-right: 0.4rem; white-space: nowrap; }
+        .sprint-viewing-banner { background: linear-gradient(135deg, #dbeafe, #eff6ff); border: 1.5px solid #93c5fd; border-radius: 10px; padding: 10px 18px; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        .sprint-viewing-banner span { font-weight: 700; color: #1e40af; font-size: 0.9rem; }
+        .sprint-viewing-banner button { padding: 5px 14px; border-radius: 16px; border: 1.5px solid #3b82f6; background: #3b82f6; color: white; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+
         /* --- FOOTER --- */
         footer { background: var(--card); color: var(--text-light); text-align: center; padding: 1.5rem; margin-top: 2rem; border-top: 2px solid var(--yellow); position: relative; z-index: 1; }
 
@@ -188,6 +205,17 @@
     <h1>Collaborative Medical AI Platform</h1>
     <p>Privacy-preserving federated learning for multi-hospital TB detection with blockchain audit trail</p>
     <div id="hero-status"><span class="badge badge-yellow">Connecting...</span></div>
+</section>
+
+<!-- SPRINT HISTORY BAR -->
+<section style="padding:0.5rem 0 0;">
+    <div class="container">
+        <div style="display:flex;align-items:center;flex-wrap:wrap;">
+            <span class="sprint-section-title">Sprints</span>
+            <div class="sprint-bar" id="sprint-bar"><!-- filled by JS --></div>
+        </div>
+        <div id="sprint-viewing-banner" style="display:none"></div>
+    </div>
 </section>
 
 <!-- STAT OVERVIEW -->
@@ -354,6 +382,10 @@ const BLOCKCHAIN_URL = '/blockchain-api';
 let accuracyChart, lossChart, rewardChart;
 let allAuditData = [];
 let currentAuditFilter = null;
+
+// --- Sprint state ---
+let viewingSprintId = null; // null = live/current
+let allSprints = [];
 
 // --- Nav scroll ---
 function scrollToSection(id, el) {
@@ -617,17 +649,140 @@ function renderAuditTrail() {
         </div>`).join('')}</div>`;
 }
 
+// --- Sprint History ---
+async function loadSprints() {
+    try {
+        const r = await fetch(`${API_URL}/api/sprints`, {headers: authHeaders()});
+        if (!r.ok) return;
+        const d = await r.json();
+        allSprints = d.sprints || [];
+        renderSprintBar();
+    } catch {}
+}
+
+function renderSprintBar() {
+    const bar = document.getElementById('sprint-bar');
+    if (!allSprints.length) { bar.innerHTML = ''; return; }
+    
+    const currentId = allSprints[allSprints.length - 1]?.sprint_id;
+    const viewId = viewingSprintId || currentId;
+    
+    let html = allSprints.map(s => {
+        const isActive = s.sprint_id === viewId;
+        const isLive = s.is_current && s.status === 'active';
+        const cls = `sprint-pill${isActive ? ' active' : ''}${isLive ? ' sprint-live' : ''}`;
+        const accText = s.final_accuracy > 0 ? `${(s.final_accuracy * 100).toFixed(1)}%` : (isLive ? 'In Progress' : 'Ready');
+        return `<button class="${cls}" onclick="viewSprint(${s.sprint_id})">
+            Sprint ${s.sprint_id}
+            <span class="sprint-acc">${accText}</span>
+        </button>`;
+    }).join('');
+    
+    // New Sprint button
+    html += `<button class="btn-new-sprint" onclick="startNewSprint()" title="Archive current sprint and start fresh">+ New Sprint</button>`;
+    bar.innerHTML = html;
+    
+    // Show/hide viewing banner
+    const banner = document.getElementById('sprint-viewing-banner');
+    if (viewingSprintId && viewingSprintId !== currentId) {
+        banner.style.display = 'flex';
+        const s = allSprints.find(x => x.sprint_id === viewingSprintId);
+        banner.innerHTML = `<span>📋 Viewing Sprint ${viewingSprintId} History${s ? ` — Final Accuracy: ${(s.final_accuracy*100).toFixed(1)}%` : ''}</span>
+            <button onclick="viewSprint(${currentId})">← Back to Live</button>`;
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+async function viewSprint(sprintId) {
+    const currentId = allSprints[allSprints.length - 1]?.sprint_id;
+    
+    if (sprintId === currentId) {
+        // Go back to live view
+        viewingSprintId = null;
+        renderSprintBar();
+        loadAllData();
+        return;
+    }
+    
+    // Load historical sprint data
+    try {
+        const r = await fetch(`${API_URL}/api/sprints/${sprintId}`, {headers: authHeaders()});
+        if (!r.ok) throw new Error();
+        const s = await r.json();
+        
+        viewingSprintId = sprintId;
+        renderSprintBar();
+        
+        // Swap stat boxes
+        document.getElementById('s-round').textContent = `${s.rounds_completed}/${s.total_rounds}`;
+        document.getElementById('s-accuracy').textContent = s.final_accuracy > 0 ? `${(s.final_accuracy*100).toFixed(1)}%` : '--';
+        
+        // Swap hero badge
+        document.getElementById('hero-status').innerHTML = `<span class="badge badge-blue">Sprint ${sprintId} — Completed</span>`;
+        
+        // Swap training status card
+        document.getElementById('training-status').innerHTML = `
+            <div style="margin-bottom:12px"><span class="badge badge-blue">Sprint ${sprintId} Complete</span></div>
+            <div class="metric"><span class="metric-label">Rounds</span><span class="metric-value">${s.rounds_completed} / ${s.total_rounds}</span></div>
+            <div class="metric"><span class="metric-label">Final Accuracy</span><span class="metric-value">${(s.final_accuracy*100).toFixed(2)}%</span></div>
+            <div class="metric"><span class="metric-label">Final Loss</span><span class="metric-value">${s.final_loss.toFixed(4)}</span></div>
+            <div class="progress-bar"><div class="progress-fill" style="width:100%">100%</div></div>`;
+        
+        // Swap accuracy chart
+        const acc = s.accuracy_history || [];
+        const loss = s.loss_history || [];
+        const labels = acc.map((_, i) => `Round ${i+1}`);
+        accuracyChart.data.labels = labels;
+        accuracyChart.data.datasets[0].data = acc.map(v => (v*100).toFixed(2));
+        accuracyChart.update();
+        lossChart.data.labels = labels;
+        lossChart.data.datasets[0].data = loss.map(v => v.toFixed(4));
+        lossChart.update();
+        
+    } catch(e) {
+        console.error('Failed to load sprint:', e);
+    }
+}
+
+async function startNewSprint() {
+    if (!confirm('Archive the current sprint and start a new training session?')) return;
+    
+    try {
+        const r = await fetch(`${API_URL}/api/sprints/new`, { method: 'POST', headers: authHeaders() });
+        if (!r.ok) throw new Error();
+        const d = await r.json();
+        
+        viewingSprintId = null;
+        await loadSprints();
+        await loadAllData();
+        
+        alert(`Sprint ${d.archived_sprint} archived! Sprint ${d.new_sprint_id} started — waiting for hospitals to connect.`);
+    } catch(e) {
+        alert('Failed to start new sprint: ' + e.message);
+    }
+}
+
 // --- Load All ---
 async function loadAllData() {
-    await Promise.allSettled([
-        loadTrainingStatus(),
-        loadMetrics(),
-        loadHospitals(),
+    const promises = [
+        loadSprints(),
         loadBlockchainStats(),
-        loadTransactions(),
-        loadRewards(),
-        loadAuditTrail()
-    ]);
+    ];
+    
+    // Only load live data if not viewing a past sprint
+    if (!viewingSprintId) {
+        promises.push(
+            loadTrainingStatus(),
+            loadMetrics(),
+            loadHospitals(),
+            loadTransactions(),
+            loadRewards(),
+            loadAuditTrail()
+        );
+    }
+    
+    await Promise.allSettled(promises);
 }
 
 // --- Init ---

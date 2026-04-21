@@ -1,523 +1,457 @@
-# Mahad's Presentation Guide: Federated Learning & Aggregator
+# Mahad's Final Panel Guide: Federated Learning & Aggregation
 
 ## Your Responsibility
-**Flower Server Setup, FL Aggregation Logic, and Training Coordination**
+**Flower Server, FedAvg Aggregation Algorithm, CNN Model Architecture, Hospital Client Training, and Multi-Hospital Synchronization**
 
-You handled the Flower aggregator server, federated learning algorithms, client-server synchronization, and the mathematical aggregation of model parameters.
+You built the federated learning engine — the Flower server that coordinates training across multiple hospitals, aggregates model weights using Federated Averaging, and manages the complete training lifecycle from initial parameter distribution through 10 rounds of collaborative learning.
 
 ---
 
-## 1. Federated Learning Overview
+## 1. What is Federated Learning? (Elevator Pitch)
 
-### What is Federated Learning?
-**Definition**: A machine learning approach where multiple parties (hospitals) collaboratively train a model without sharing their raw data.
+**"Bring the model to the data, not the data to the model."**
 
-**Key Principle**: "Bring the model to the data, not the data to the model"
+Multiple hospitals collaboratively train a TB detection AI model **without ever sharing patient X-ray images**. Each hospital trains locally, sends only numerical weight updates (not images), and the server averages them into a better global model. Raw data never leaves the hospital.
 
 ### Why FL for Healthcare?
-1. **Privacy**: Patient data never leaves the hospital
-2. **Compliance**: Meets HIPAA, GDPR requirements
-3. **Data Diversity**: Learn from multiple hospitals' data
-4. **Better Models**: More training data = better accuracy
-5. **Trust**: Hospitals maintain control of their data
+| Concern | How FL Solves It |
+|---------|-----------------|
+| **Patient Privacy** | X-rays never leave hospital — only model weight numbers are shared |
+| **GDPR/HIPAA** | Compliance by design — no personal data transmitted |
+| **Data Diversity** | Learn from multiple hospital populations for better generalization |
+| **Trust** | No hospital has to trust another — only the aggregator sees weights |
 
 ---
 
-## 2. Flower Framework
+## 2. Technology Stack
 
-### Technology Stack
-- **Framework**: Flower (Federated Learning framework)
-- **Version**: 1.6.0
-- **Language**: Python 3.10
-- **Communication**: gRPC (port 8080)
-- **Strategy**: FedAvg (Federated Averaging)
+| Technology | Version | Purpose |
+|---|---|---|
+| **Flower** | 1.6.0 | FL framework (server + client) |
+| **TensorFlow** | 2.15.0 | CNN model training |
+| **gRPC** | 1.48.2 | Flower's transport protocol |
+| **NumPy** | 1.24.3 | Weight array manipulation |
+| **Python** | 3.10 | Runtime |
 
-### Why Flower?
-1. **Production-Ready**: Used by major companies
-2. **Framework Agnostic**: Works with TensorFlow, PyTorch
-3. **Scalable**: Handles thousands of clients
-4. **Flexible**: Customizable aggregation strategies
-5. **Active Development**: Regular updates and support
-
-### File Location
+### Key Files
 ```
-aggregator/src/flower_server.py
+aggregator/src/
+├── flower_server.py     ← CoreChainStrategy (custom FedAvg) + reward calculation
+├── main.py              ← Boots Flower server on :8080 in background thread
+
+hospital_node/src/
+├── fl_trainer.py        ← TBFlowerClient (fit, evaluate, get_parameters)
+├── tb_model.py          ← CNN architecture definition
+├── data_loader.py       ← X-ray dataset loading + synthetic data generator
+├── main.py              ← Hospital boot sequence + Flower connection
 ```
 
 ---
 
-## 3. Flower Server Architecture
+## 3. Flower Server — `flower_server.py`
 
-### Server Components
+### CoreChainStrategy Class (Lines 24–208)
+
+This extends Flower's built-in `FedAvg` strategy with custom logging:
 
 ```python
-import flwr as fl
-from flwr.server.strategy import FedAvg
+class CoreChainStrategy(FedAvg):
+    def __init__(self, blockchain_client=None, websocket_server=None, **kwargs):
+        super().__init__(**kwargs)
+        self.blockchain_client = blockchain_client
+        self.websocket_server = websocket_server
+        self.current_round = 0
+```
 
-def start_flower_server():
-    """Start Flower aggregator server"""
-    
-    # 1. Define aggregation strategy
-    strategy = FedAvg(
-        fraction_fit=1.0,          # Use 100% of available clients
-        fraction_evaluate=1.0,      # Evaluate on 100% of clients
-        min_fit_clients=1,          # Minimum clients for training
-        min_evaluate_clients=1,     # Minimum clients for evaluation
-        min_available_clients=1,    # Wait for 1 client before starting
-    )
-    
-    # 2. Configure server
-    config = fl.server.ServerConfig(
-        num_rounds=10,              # Total FL rounds
-        round_timeout=600           # 10 minutes per round
-    )
-    
-    # 3. Start server
-    fl.server.start_server(
-        server_address="0.0.0.0:8080",
-        config=config,
-        strategy=strategy
+### Server Configuration (Lines 211–244)
+
+```python
+def create_flower_server(min_clients=2, num_rounds=10, ...):
+    strategy = CoreChainStrategy(
+        min_fit_clients=min_clients,        # Need 2 hospitals to start training
+        min_evaluate_clients=min_clients,    # Need 2 hospitals to evaluate
+        min_available_clients=min_clients,   # Wait for 2 before starting
+        fraction_fit=1.0,                   # Use 100% of connected clients
+        fraction_evaluate=1.0               # Evaluate on 100% of clients
     )
 ```
-
-### Key Configuration Explained
-
-#### `fraction_fit` and `fraction_evaluate`
-- **Value**: 1.0 (100%)
-- **Meaning**: Use all available clients for training/evaluation
-- **Why**: With few hospitals, we want all to participate
-
-#### `min_fit_clients` and `min_evaluate_clients`
-- **Value**: 1
-- **Meaning**: Need at least 1 client to proceed
-- **Why**: Allows testing with single hospital
-
-#### `min_available_clients`
-- **Value**: 1
-- **Meaning**: Wait for 1 client to connect before starting
-- **Why**: Server won't start rounds until a hospital connects
-- **Critical Fix**: This prevents the deadlock issue we had
-
-#### `round_timeout`
-- **Value**: 600 seconds (10 minutes)
-- **Meaning**: Each round must complete within 10 minutes
-- **Why**: Training + parameter transfer takes ~3-4 minutes
-- **Your Fix**: Increased from default 60s to prevent timeouts
-
----
-
-## 4. Federated Averaging (FedAvg) Algorithm
-
-### Mathematical Formula
-
-**Given:**
-- $n$ hospitals (clients)
-- $w_i$ = model parameters from hospital $i$
-- $n_i$ = number of training samples at hospital $i$
-- $N = \sum_{i=1}^{n} n_i$ = total samples across all hospitals
-
-**Aggregation:**
-$$
-w_{global} = \frac{1}{N} \sum_{i=1}^{n} n_i \cdot w_i
-$$
-
-**In Words**: The global model is a weighted average of local models, where weights are proportional to the number of training samples.
-
-### Why Weighted Average?
-- Hospitals with more data have more influence
-- Prevents small datasets from skewing the model
-- Statistically optimal under certain assumptions
-
-### Example Calculation
-
-**Scenario:**
-- Hospital A: 500 samples, accuracy = 75%
-- Hospital B: 300 samples, accuracy = 70%
-
-**Weights:**
-- $w_A = 500 / (500 + 300) = 0.625$
-- $w_B = 300 / (500 + 300) = 0.375$
-
-**Global Accuracy:**
-$$
-\text{Global} = 0.625 \times 0.75 + 0.375 \times 0.70 = 0.7313 = 73.13\%
-$$
-
-### Code Implementation
-
-```python
-def aggregate_fit(
-    self,
-    server_round: int,
-    results: List[Tuple[ClientProxy, FitRes]],
-    failures: List[BaseException],
-) -> Tuple[Optional[Parameters], Dict[str, Scalar]]:
-    """Aggregate model parameters using weighted average"""
-    
-    # Extract parameters and number of samples
-    weights_results = [
-        (parameters_to_ndarrays(fit_res.parameters), fit_res.num_examples)
-        for _, fit_res in results
-    ]
-    
-    # Perform weighted averaging
-    parameters_aggregated = ndarrays_to_parameters(
-        aggregate(weights_results)
-    )
-    
-    return parameters_aggregated, {}
-
-def aggregate(results: List[Tuple[NDArrays, int]]) -> NDArrays:
-    """Compute weighted average of parameters"""
-    
-    # Calculate total number of examples
-    num_examples_total = sum(num_examples for (_, num_examples) in results)
-    
-    # Create weighted average
-    weighted_weights = [
-        [layer * num_examples for layer in weights]
-        for weights, num_examples in results
-    ]
-    
-    # Sum all weighted weights
-    weights_prime: NDArrays = [
-        reduce(np.add, layer_updates)
-        for layer_updates in zip(*weighted_weights)
-    ]
-    
-    # Divide by total examples
-    return [
-        layer / num_examples_total
-        for layer in weights_prime
-    ]
-```
-
----
-
-## 5. FL Training Workflow
-
-### Complete Round Lifecycle
-
-```
-1. Server Initialization
-   ↓
-2. Wait for min_available_clients (1 hospital)
-   ↓
-3. Server sends global model parameters to hospital
-   ↓
-4. Hospital receives parameters via gRPC
-   ↓
-5. Hospital trains model locally (5 epochs)
-   ↓
-6. Hospital sends updated parameters back
-   ↓
-7. Server receives parameters
-   ↓
-8. Server aggregates parameters (FedAvg)
-   ↓
-9. Server updates global model
-   ↓
-10. Server registers model on blockchain
-   ↓
-11. Repeat steps 3-10 for next round
-```
-
-### Timing Breakdown (Per Round)
-
-| Phase | Duration | Details |
-|-------|----------|---------|
-| Parameter Download | ~5 seconds | 56.7 MB transfer |
-| Local Training | ~3.5 minutes | 5 epochs on 529 images |
-| Parameter Upload | ~5 seconds | 56.7 MB transfer |
-| Aggregation | < 1 second | Weighted average |
-| Blockchain Logging | ~2 seconds | Transaction confirmation |
-| **Total** | **~4 minutes** | Per round |
-
----
-
-## 6. Client Synchronization
-
-### The Deadlock Problem
-
-**Original Issue:**
-```python
-# BAD: Server requested parameters before clients connected
-def initialize_parameters(self, client_manager):
-    # This runs immediately, before any clients connect!
-    return get_initial_parameters()
-```
-
-**Result**: Server waited for parameters that would never come.
-
-### Your Solution
-
-```python
-def initialize_parameters(self, client_manager):
-    """Wait for clients before requesting parameters"""
-    
-    logger.info("Waiting for clients to connect...")
-    
-    # Wait for minimum clients
-    while True:
-        num_clients = client_manager.num_available()
-        if num_clients >= self.min_available_clients:
-            logger.success(f"{num_clients} clients connected")
-            break
-        time.sleep(1)
-    
-    # Now request parameters from a connected client
-    sample_client = client_manager.sample(1)[0]
-    ins = GetParametersIns(config={})
-    get_params_res = sample_client.get_parameters(ins=ins, timeout=None)
-    
-    return get_params_res.parameters
-```
-
-**Why This Works:**
-1. Explicitly waits for `min_available_clients`
-2. Only requests parameters after clients connect
-3. Prevents deadlock by ensuring client availability
-
----
-
-## 7. gRPC Keepalive Configuration
-
-### The Timeout Problem
-
-**Original Issue**: Clients disconnected after ~22 minutes due to gRPC keepalive timeout.
-
-### Your Solution
-
-```python
-# File: hospital_node/src/main.py
-
-import os
-
-# Set gRPC environment variables
-os.environ['GRPC_KEEPALIVE_TIME_MS'] = '10000'        # Ping every 10s
-os.environ['GRPC_KEEPALIVE_TIMEOUT_MS'] = '5000'      # Timeout after 5s
-os.environ['GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS'] = '1'  # Allow pings
-os.environ['GRPC_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS'] = '5000'
-os.environ['GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA'] = '0'  # Unlimited pings
-
-# Now start Flower client
-fl.client.start_numpy_client(
-    server_address="54.173.119.88:8080",
-    client=client
-)
-```
-
-**Configuration Explained:**
 
 | Parameter | Value | Meaning |
 |-----------|-------|---------|
-| `GRPC_KEEPALIVE_TIME_MS` | 10000 | Send ping every 10 seconds |
-| `GRPC_KEEPALIVE_TIMEOUT_MS` | 5000 | Wait 5 seconds for pong |
-| `GRPC_KEEPALIVE_PERMIT_WITHOUT_CALLS` | 1 | Allow pings even when idle |
-| `GRPC_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS` | 5000 | Accept pings every 5 seconds |
-| `GRPC_HTTP2_MAX_PINGS_WITHOUT_DATA` | 0 | No limit on pings |
+| `min_fit_clients` | 2 | Minimum hospitals to train per round |
+| `min_evaluate_clients` | 2 | Minimum hospitals to evaluate per round |
+| `min_available_clients` | 2 | Wait for 2 hospitals before starting ANY round |
+| `fraction_fit` | 1.0 | Use all available hospitals (100%) |
+| `fraction_evaluate` | 1.0 | Evaluate on all hospitals |
+| `num_rounds` | 10 | Total FL training rounds |
 
-**Why This Works:**
-- Prevents connection drops during long training
-- Maintains connection even when no data is being sent
-- Detects disconnections quickly (5s timeout)
-
----
-
-## 8. FL Client Implementation
-
-### File Location
-```
-hospital_node/src/fl_trainer.py
-```
-
-### Flower Client Class
+### Starting the Server (Lines 247–277)
 
 ```python
-class FlowerClient(fl.client.NumPyClient):
-    """Flower client for hospital node"""
+def start_flower_server(server_address="0.0.0.0:8080", min_clients=2, num_rounds=10, ...):
+    strategy, rounds = create_flower_server(min_clients, num_rounds, ...)
     
-    def __init__(self, model, x_train, y_train, x_test, y_test):
-        self.model = model
-        self.x_train = x_train
-        self.y_train = y_train
-        self.x_test = x_test
-        self.y_test = y_test
-    
-    def get_parameters(self, config):
-        """Return current model parameters"""
-        return self.model.get_weights()
-    
-    def fit(self, parameters, config):
-        """Train model with provided parameters"""
-        # Update model with global parameters
-        self.model.set_weights(parameters)
-        
-        # Train locally
-        history = self.model.fit(
-            self.x_train,
-            self.y_train,
-            epochs=5,
-            batch_size=32,
-            validation_split=0.1
-        )
-        
-        # Return updated parameters and metrics
-        return self.model.get_weights(), len(self.x_train), {
-            "accuracy": float(history.history["accuracy"][-1]),
-            "loss": float(history.history["loss"][-1])
-        }
-    
-    def evaluate(self, parameters, config):
-        """Evaluate model with provided parameters"""
-        # Update model
-        self.model.set_weights(parameters)
-        
-        # Evaluate
-        loss, accuracy = self.model.evaluate(self.x_test, self.y_test)
-        
-        return float(loss), len(self.x_test), {"accuracy": float(accuracy)}
-```
-
----
-
-## 9. Model Architecture
-
-### TB Detection CNN
-
-```python
-def create_model():
-    """Create CNN for TB detection"""
-    model = tf.keras.Sequential([
-        # Convolutional layers
-        tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)),
-        tf.keras.layers.MaxPooling2D((2, 2)),
-        
-        tf.keras.layers.Conv2D(64, (3, 3), activation='relu'),
-        tf.keras.layers.MaxPooling2D((2, 2)),
-        
-        tf.keras.layers.Conv2D(128, (3, 3), activation='relu'),
-        tf.keras.layers.MaxPooling2D((2, 2)),
-        
-        # Dense layers
-        tf.keras.layers.Flatten(),
-        tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(1, activation='sigmoid')
-    ])
-    
-    model.compile(
-        optimizer='adam',
-        loss='binary_crossentropy',
-        metrics=['accuracy']
+    fl.server.start_server(
+        server_address=server_address,      # Listen on all interfaces, port 8080
+        config=fl.server.ServerConfig(num_rounds=rounds),
+        strategy=strategy
     )
     
-    return model
+    # After all rounds complete:
+    if training_state:
+        training_state['is_training'] = False
 ```
 
-**Model Statistics:**
-- **Total Parameters**: 56 arrays (~56.7 MB)
-- **Trainable Parameters**: ~15 million
-- **Input**: 224x224x3 RGB images
-- **Output**: Binary classification (TB vs Normal)
-
 ---
 
-## 10. Training Results
+## 4. The FedAvg Algorithm — The Mathematical Heart
 
-### Performance Progression
+### The Formula
 
-| Round | Accuracy | Loss | Improvement |
-|-------|----------|------|-------------|
-| 1 | 72.59% | 0.5842 | Baseline |
-| 2 | 73.16% | 0.5693 | +0.57% |
-| 3 | 96.98% | 0.1406 | +23.82% |
-| 4 | 97.92% | 0.1054 | +0.94% |
-
-**Key Insight**: Dramatic improvement in Round 3 suggests model found optimal features.
-
----
-
-## 11. Key Files You Should Know
-
-### FL Server Files
-| File | Purpose | Your Contribution |
-|------|---------|-------------------|
-| `aggregator/src/flower_server.py` | Flower server | Complete implementation |
-| `aggregator/src/main.py` | Server startup | Configured Flower launch |
-
-### FL Client Files
-| File | Purpose | Your Contribution |
-|------|---------|-------------------|
-| `hospital_node/src/fl_trainer.py` | Flower client | Complete implementation |
-| `hospital_node/src/main.py` | Client startup | gRPC keepalive config |
-| `hospital_node/src/tb_model.py` | CNN model | Model architecture |
-
----
-
-## 12. Presentation Talking Points
-
-### Opening (30 seconds)
-"I implemented the Flower aggregator server and federated learning logic that coordinates training across hospitals without sharing patient data. The system uses Federated Averaging to combine model updates while preserving privacy."
-
-### Technical Deep Dive (2 minutes)
+Given:
+- **K** hospitals (2 in our demo: Alpha and Beta)
+- **W_i** = model weight vector from hospital i (all layers flattened into arrays)
+- **n_i** = number of training samples at hospital i
+- **N** = total samples across all hospitals = Σn_i
 
 **Federated Averaging:**
-"We use FedAvg, which computes a weighted average of model parameters from each hospital. Hospitals with more training data have proportionally more influence on the global model. This is mathematically optimal and ensures fairness."
 
-**Client Synchronization:**
-"I solved a critical deadlock issue where the server requested parameters before clients connected. The solution was to explicitly wait for `min_available_clients` before requesting initial parameters."
+```
+W_global = Σ(i=1 to K) (n_i / N) × W_i
+```
 
-**gRPC Keepalive:**
-"Training rounds take 3-4 minutes, but gRPC was timing out after 22 minutes of inactivity. I configured keepalive to ping every 10 seconds, maintaining connections throughout the entire FL process."
+**In words**: The new global model is a weighted average of all hospital models, where each hospital's influence is proportional to the amount of data it trained on.
 
-**Round Timeout:**
-"I increased the round timeout from 60 seconds to 600 seconds (10 minutes) to accommodate parameter transfer and training time. This prevents premature round failures."
+### Why Weighted (Not Simple) Average?
 
-### Demo Points
-1. Show Flower server logs with client connections
-2. Explain FedAvg formula with example calculation
-3. Show training progression (72% → 97% accuracy)
-4. Display gRPC keepalive configuration
+A hospital with 1,000 samples has learned more than one with 100 samples. Weighting by dataset size ensures the global model isn't biased toward small, potentially noisy datasets.
 
-### Closing (30 seconds)
-"The FL system successfully trains a TB detection model across hospitals while maintaining data privacy. The model improved from 72% to 97% accuracy over 4 rounds, demonstrating the effectiveness of federated learning."
+### Example Calculation
+
+**Setup:**
+- Hospital Alpha: 8 training samples, accuracy = 0.75, weights = [0.4, 0.6, 0.8]
+- Hospital Beta: 8 training samples, accuracy = 0.82, weights = [0.5, 0.7, 0.9]
+
+**Step 1**: Total samples = 8 + 8 = 16
+
+**Step 2**: Weights for averaging:
+- Alpha weight = 8/16 = 0.5
+- Beta weight = 8/16 = 0.5
+
+**Step 3**: Weighted average per layer:
+```
+W_global[0] = 0.5 × 0.4 + 0.5 × 0.5 = 0.45
+W_global[1] = 0.5 × 0.6 + 0.5 × 0.7 = 0.65
+W_global[2] = 0.5 × 0.8 + 0.5 × 0.9 = 0.85
+```
+
+**Result**: Global model = [0.45, 0.65, 0.85] — a blend of both hospitals' knowledge.
+
+### Actual Code: `aggregate_fit()` (Lines 40–140)
+
+```python
+def aggregate_fit(self, server_round, results, failures):
+    self.current_round = server_round
+    
+    # Step 1: Flower's FedAvg does the actual weight averaging
+    aggregated_parameters, aggregated_metrics = super().aggregate_fit(
+        server_round, results, failures
+    )
+    
+    # Step 2: Calculate global metrics (weighted by sample count)
+    total_examples = sum([fit_res.num_examples for _, fit_res in results])
+    
+    weighted_accuracy = sum([
+        fit_res.metrics.get('accuracy', 0.0) * fit_res.num_examples
+        for _, fit_res in results
+    ]) / total_examples
+    
+    weighted_loss = sum([
+        fit_res.metrics.get('loss', 0.0) * fit_res.num_examples
+        for _, fit_res in results
+    ]) / total_examples
+    
+    # Step 3: Log to blockchain
+    if self.blockchain_client:
+        # Log each hospital's model update
+        for client, fit_res in results:
+            self.blockchain_client.log_transaction({
+                'type': 'MODEL_UPDATE',
+                'hospital_id': str(client.cid),
+                'round': server_round,
+                'accuracy': fit_res.metrics.get('accuracy', 0.0),
+                'loss': fit_res.metrics.get('loss', 0.0),
+                'samples_trained': fit_res.num_examples
+            })
+        
+        # Log the aggregation event
+        self.blockchain_client.log_transaction({
+            'type': 'MODEL_AGGREGATION',
+            'round': server_round,
+            'global_accuracy': weighted_accuracy,
+            'global_loss': weighted_loss,
+            'participants': len(results),
+            'total_samples': total_examples
+        })
+        
+        # Distribute rewards
+        for client, fit_res in results:
+            reward = self._calculate_reward(
+                accuracy=fit_res.metrics.get('accuracy', 0.0),
+                samples=fit_res.num_examples,
+                total_samples=total_examples
+            )
+            self.blockchain_client.log_transaction({
+                'type': 'REWARD_DISTRIBUTION',
+                'hospital_id': str(client.cid),
+                'round': server_round,
+                'reward_tokens': reward
+            })
+    
+    # Step 4: Update shared dashboard state
+    if training_state:
+        training_state['current_round'] = server_round
+        training_state['global_accuracy'] = weighted_accuracy
+        training_state['global_loss'] = weighted_loss
+        training_state['is_training'] = True
+        training_state['accuracy_history'].append(weighted_accuracy)
+        training_state['loss_history'].append(weighted_loss)
+    
+    return aggregated_parameters, aggregated_metrics
+```
+
+### Reward Calculation (Lines 191–208)
+
+```python
+def _calculate_reward(self, accuracy, samples, total_samples):
+    base_reward = 10.0
+    accuracy_bonus = accuracy * 5.0
+    sample_bonus = (samples / total_samples) * 5.0 if total_samples > 0 else 0.0
+    
+    reward = base_reward + accuracy_bonus + sample_bonus
+    
+    if accuracy > 0.9:
+        reward *= 1.2   # Quality multiplier
+    
+    return round(reward, 2)
+```
 
 ---
 
-## 13. Common Questions & Answers
+## 5. Hospital Client — `fl_trainer.py`
 
-**Q: Why Federated Averaging instead of other algorithms?**
-A: "FedAvg is the most widely used FL algorithm. It's simple, effective, and has strong theoretical guarantees. More complex algorithms like FedProx or FedNova could be explored for non-IID data."
+### TBFlowerClient Class (Lines 16–130)
 
-**Q: How do you handle hospitals with different data distributions?**
-A: "FedAvg uses weighted averaging based on dataset size. Hospitals with more data have more influence. For highly non-IID data, we could use techniques like FedProx or personalization layers."
+```python
+class TBFlowerClient(fl.client.NumPyClient):
+    def __init__(self, hospital_id, model, x_train, y_train, x_test, y_test,
+                 local_epochs=5, batch_size=32):
+        self.hospital_id = hospital_id
+        self.model = model          # TBDetectionModel instance
+        self.x_train = x_train      # Training images (NumPy)
+        self.y_train = y_train      # Training labels (0=normal, 1=TB)
+        self.x_test = x_test        # Test images
+        self.y_test = y_test        # Test labels
+```
 
-**Q: What if a hospital drops out mid-round?**
-A: "Flower handles this gracefully. If a client fails, the round continues with remaining clients. The `min_fit_clients` parameter ensures we have enough participants."
+### Three Core Methods
 
-**Q: How do you prevent malicious hospitals from poisoning the model?**
-A: "Currently, we trust all participants. For production, we'd implement Byzantine-robust aggregation, gradient clipping, or differential privacy to detect and mitigate attacks."
+**1. `get_parameters()` — Send current weights to server**
+```python
+def get_parameters(self, config):
+    return self.model.get_weights()   # Returns list of NumPy arrays
+```
 
-**Q: Can you add more hospitals dynamically?**
-A: "Yes! Flower supports dynamic client joining. New hospitals can connect at any time and participate in subsequent rounds."
+**2. `fit()` — Receive global weights, train locally, return updated weights**
+```python
+def fit(self, parameters, config):
+    # Step 1: Replace local weights with global weights
+    self.model.set_weights(parameters)
+    
+    # Step 2: Train locally for 5 epochs
+    history = self.model.fit(
+        self.x_train, self.y_train,
+        epochs=self.local_epochs,       # 5
+        batch_size=self.batch_size,     # 32
+        validation_split=0.1
+    )
+    
+    # Step 3: Return updated weights + metrics
+    accuracy = float(history.history["accuracy"][-1])
+    loss = float(history.history["loss"][-1])
+    
+    return self.model.get_weights(), len(self.x_train), {
+        "accuracy": accuracy,
+        "loss": loss
+    }
+```
+
+**3. `evaluate()` — Evaluate global model on local test data**
+```python
+def evaluate(self, parameters, config):
+    self.model.set_weights(parameters)
+    loss, accuracy = self.model.evaluate(self.x_test, self.y_test)
+    return float(loss), len(self.x_test), {"accuracy": float(accuracy)}
+```
 
 ---
 
-## Summary Checklist
+## 6. CNN Model — `tb_model.py`
 
-Before presentation, make sure you can explain:
-- ✅ What is Federated Learning and why for healthcare
-- ✅ Flower framework and why we chose it
-- ✅ FedAvg algorithm and mathematical formula
-- ✅ Weighted averaging with example calculation
-- ✅ Client synchronization fix (deadlock solution)
-- ✅ gRPC keepalive configuration
-- ✅ Round timeout increase (60s → 600s)
-- ✅ FL training workflow (11 steps)
-- ✅ Model architecture (CNN for TB detection)
-- ✅ Training results (72% → 97% accuracy)
-- ✅ File locations for all FL code
-- ✅ How Flower handles client failures
+### Architecture
 
-**You've got this! 🚀**
+```
+Input: (224, 224, 1)  ← Grayscale chest X-ray
+
+Conv2D(32, 3×3, ReLU) → MaxPool2D(2×2)     → 112×112×32
+Conv2D(64, 3×3, ReLU) → MaxPool2D(2×2)     → 56×56×64
+Conv2D(128, 3×3, ReLU) → MaxPool2D(2×2)    → 28×28×128
+Flatten                                      → 100,352
+Dense(256, ReLU) → Dropout(0.5)             → 256
+Dense(1, Sigmoid)                           → P(TB positive)
+```
+
+| Layer | Parameters | Purpose |
+|-------|-----------|---------|
+| Conv2D(32) | 320 | Edge/texture detection |
+| Conv2D(64) | 18,496 | Shape/pattern detection |
+| Conv2D(128) | 73,856 | High-level feature detection |
+| Dense(256) | 25,690,368 | Classification reasoning |
+| Dense(1) | 257 | Binary output (TB yes/no) |
+
+**Loss**: Binary Cross-Entropy: `L = -[y·log(ŷ) + (1-y)·log(1-ŷ)]`  
+**Optimizer**: Adam (lr=0.001)  
+**Output**: Probability 0–1 (threshold 0.5 → TB positive)
+
+---
+
+## 7. Complete Training Round Lifecycle
+
+```
+Round N begins
+    │
+    ├── Server sends global weights W_global to all hospitals (via gRPC :8080)
+    │
+    ├── Hospital Alpha receives W_global
+    │   ├── Sets local model weights = W_global
+    │   ├── Trains on Shenzhen dataset (5 epochs, batch_size=32)
+    │   ├── Sends back W_alpha + {accuracy, loss, num_examples}
+    │   └── ~10-30 seconds per round (synthetic data)
+    │
+    ├── Hospital Beta receives W_global (simultaneously)
+    │   ├── Same process with Montgomery dataset
+    │   └── Sends back W_beta + metrics
+    │
+    ├── Server aggregate_fit() fires:
+    │   ├── FedAvg: W_new = (n_α/N)·W_α + (n_β/N)·W_β
+    │   ├── Logs MODEL_UPDATE × 2 to blockchain
+    │   ├── Logs MODEL_AGGREGATION to blockchain
+    │   ├── Calculates rewards for each hospital
+    │   └── Logs REWARD_DISTRIBUTION × 2 to blockchain
+    │
+    ├── Server aggregate_evaluate() fires:
+    │   ├── Each hospital evaluates the new global model on test data
+    │   └── Updates training_state with global accuracy/loss
+    │
+    └── Dashboard updates: charts, progress bar, leaderboard
+    
+Round N+1 begins...
+```
+
+---
+
+## 8. Hospital Synchronization — The Retry Pattern
+
+### The Problem We Solved
+
+The original code had a blocking TCP check (`wait_for_aggregator`) that waited up to 120 seconds for port 8080 to be reachable before even attempting to connect. With `MIN_CLIENTS=2`, this caused a deadlock:
+- Flower server waits for 2 hospitals before binding port 8080
+- Hospitals wait for port 8080 before connecting
+- Nobody connects → nothing starts
+
+### The Solution (hospital_node/src/main.py)
+
+```python
+# Old (BROKEN):
+if not wait_for_aggregator(aggregator_ip, flower_port, timeout=120):
+    logger.warning("Not reachable after 120s")
+
+# New (FIXED): Retry loop that goes straight to Flower connection
+while True:
+    try:
+        logger.info(f"Connecting to Flower at {flower_server_address}...")
+        fl.client.start_numpy_client(
+            server_address=flower_server_address,
+            client=flower_client
+        )
+        logger.success("Flower round complete")
+        break
+    except Exception as e:
+        logger.warning(f"Not ready yet: {e} — retrying in 5s")
+        time.sleep(5)
+```
+
+This ensures both hospitals continuously attempt to connect until the Flower server is ready, eliminating the race condition.
+
+---
+
+## 9. Presentation Talking Points
+
+### Opening (30 seconds)
+"I implemented the federated learning engine using the Flower framework. The system coordinates training across multiple hospital nodes using Federated Averaging — each hospital trains locally on its private data, and I aggregate their model weights proportionally to create a superior global model, all without any patient data leaving the hospital."
+
+### Technical Deep Dive (3 minutes)
+
+**The Algorithm:**
+"Federated Averaging computes a weighted average of model parameters: W_global = Σ(n_i/N) × W_i. Hospitals with more training data have proportionally more influence on the global model. This is mathematically equivalent to training on the combined dataset — but without actually combining the data."
+
+**The Training Loop:**
+"Each round, the server sends global weights to all hospitals. Each hospital replaces its local weights, trains for 5 epochs on its local dataset, then sends back the updated weights plus accuracy and loss metrics. The server aggregates using FedAvg, logs everything to the blockchain, calculates rewards, and starts the next round."
+
+**The CNN:**
+"The model is a 3-layer CNN with 128 filters, followed by Dense layers with 50% dropout. It takes 224×224 grayscale X-ray images and outputs a binary TB probability. The architecture is intentionally lightweight for federated training on constrained hardware."
+
+**The Synchronization Fix:**
+"We solved a critical deadlock: the Flower server needs N clients before binding its port, but clients were waiting for the port before connecting. I replaced the blocking TCP wait with a resilient retry loop that continuously attempts Flower connection every 5 seconds."
+
+### Live Demo Points
+1. Open `http://54.91.23.82/` → show 2 hospitals connected
+2. Click "Accuracy" tab → show accuracy improving over rounds
+3. Click "Loss" tab → show loss decreasing
+4. Show aggregator logs: `docker logs corechain_aggregator --tail 20` → see FedAvg metrics
+5. Walk through `flower_server.py` aggregate_fit() — show the weighted average calculation
+
+---
+
+## 10. Panel Q&A Preparation
+
+**Q: Why FedAvg instead of FedProx or another algorithm?**
+A: "FedAvg is the foundational FL algorithm — it's simple, well-understood, and has strong convergence guarantees. For our balanced dataset scenario (both hospitals have similar data sizes), FedAvg performs optimally. FedProx adds a proximal term for highly non-IID data, which we don't need in our demo."
+
+**Q: What happens if a hospital drops mid-round?**
+A: "Flower handles this gracefully. If a client fails during `fit()`, the round continues with remaining clients as long as `min_fit_clients` is satisfied. The failed client's weights are simply excluded from that round's aggregation."
+
+**Q: How do you prevent a hospital from poisoning the model?**
+A: "Currently we trust participants — this is a demo. For production, we'd add Byzantine-robust aggregation (like Krum or Trimmed Mean) that detects and excludes outlier weight updates. The blockchain audit trail also allows post-hoc analysis of suspicious contributions."
+
+**Q: Why 10 rounds? Could you do more?**
+A: "10 rounds is sufficient to demonstrate convergence. Each additional round yields diminishing returns as the model approaches its accuracy ceiling. In production, you'd use early stopping — halt when accuracy improvement drops below a threshold."
+
+**Q: What's the communication cost per round?**
+A: "The CNN has approximately 25 million parameters. Each parameter is a 32-bit float, so one set of weights is about 100MB uncompressed. Flower uses gRPC with Protocol Buffers, which provides efficient binary serialization, reducing actual transfer size."
+
+---
+
+## 11. Key Code References
+
+| What to show | File | Lines | Key detail |
+|---|---|---|---|
+| FedAvg aggregation | `aggregator/src/flower_server.py` | 40–140 | `aggregate_fit()` |
+| Reward calculation | `aggregator/src/flower_server.py` | 191–208 | `_calculate_reward()` |
+| Server config | `aggregator/src/flower_server.py` | 211–244 | `create_flower_server()` |
+| Server startup | `aggregator/src/flower_server.py` | 247–277 | `start_flower_server()` |
+| Flower client fit() | `hospital_node/src/fl_trainer.py` | 46–90 | `TBFlowerClient.fit()` |
+| Flower client evaluate() | `hospital_node/src/fl_trainer.py` | 92–110 | `evaluate()` |
+| CNN architecture | `hospital_node/src/tb_model.py` | 30–73 | `_build_model()` |
+| Retry sync fix | `hospital_node/src/main.py` | 55–68 | `while True` retry loop |
+| Data loader | `hospital_node/src/data_loader.py` | 117–169 | `_create_synthetic_data()` |

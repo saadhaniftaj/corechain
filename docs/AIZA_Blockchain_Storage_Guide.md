@@ -1,578 +1,412 @@
-# Aiza's Presentation Guide: Blockchain & Storage
+# Aiza's Final Panel Guide: Blockchain & Storage Architecture
 
 ## Your Responsibility
-**Blockchain Integration and Data Storage Architecture**
+**Blockchain Immutable Audit Trail, Smart Contract Validation, Reward Distribution, and Data Persistence**
 
-You handled all blockchain-related components, smart contracts, model storage, and data persistence strategies in the CoreChain federated learning system.
+You built CoreChain's custom Python blockchain that records every FL event — hospital registrations, model updates, weight aggregations, and token rewards — as an immutable, tamper-proof audit trail with Proof-of-Work consensus.
 
 ---
 
 ## 1. Blockchain Architecture Overview
 
-### Technology Stack
-- **Blockchain Platform**: Ethereum (via Ganache)
-- **Smart Contract Language**: Solidity
-- **Web3 Library**: Web3.py (Python)
-- **Local Blockchain**: Ganache (for development/testing)
-- **Network**: HTTP RPC on port 8545
+### Technology Stack (ACTUAL — NOT Ethereum/Ganache)
 
-### Why Ethereum/Ganache?
-1. **Immutability**: Model metadata cannot be altered once recorded
-2. **Transparency**: All hospitals can verify model updates
-3. **Auditability**: Complete history of FL training rounds
-4. **Decentralization**: No single point of control
-5. **Development Speed**: Ganache provides instant blockchain for testing
+| Technology | Purpose | Why |
+|---|---|---|
+| **Custom Python Blockchain** | Immutable ledger | Full control, lightweight, no external deps |
+| **SHA-256 Proof-of-Work** | Consensus mechanism | Tamper-proof blocks |
+| **FastAPI (port 7050)** | Blockchain REST API | Dashboard + aggregator integration |
+| **JSON Persistence** | Block storage | Survives container restarts |
+| **Smart Contracts (Python)** | Validation + rewards | Business logic enforcement |
+
+> **CRITICAL**: We do NOT use Ethereum or Ganache. The old docs were wrong. We built a **custom lightweight blockchain from scratch in Python** — this is actually more impressive to explain because you built it yourself rather than using a pre-built platform.
+
+### Directory Structure
+```
+blockchain/
+├── src/
+│   ├── main.py                 ← Entry point (starts API on port 7050)
+│   ├── blockchain_core.py      ← Block + Blockchain classes (PoW mining)
+│   ├── fabric_api.py           ← FastAPI REST endpoints (17 routes)
+│   └── smart_contracts.py      ← ModelUpdateValidator, RewardDistributor, AuditLogger
+├── requirements.txt
+└── Dockerfile
+```
 
 ---
 
-## 2. Smart Contract: ModelRegistry
+## 2. Blockchain Core — `blockchain_core.py`
 
-### File Location
+### The Block Class (Lines 14–63)
+
+Every block contains:
+
+```python
+class Block:
+    def __init__(self, index, timestamp, transactions, previous_hash, nonce=0):
+        self.index = index              # Block position in chain (0, 1, 2...)
+        self.timestamp = timestamp      # ISO-8601 datetime
+        self.transactions = transactions # List of transaction dicts
+        self.previous_hash = previous_hash # Hash of the previous block
+        self.nonce = nonce              # Proof-of-Work counter
+        self.hash = self.calculate_hash()  # SHA-256 of everything above
 ```
-blockchain/contracts/ModelRegistry.sol
+
+### Hash Calculation (Lines 32–42)
+```python
+def calculate_hash(self) -> str:
+    block_string = json.dumps({
+        'index': self.index,
+        'timestamp': self.timestamp,
+        'transactions': self.transactions,
+        'previous_hash': self.previous_hash,
+        'nonce': self.nonce
+    }, sort_keys=True)
+    return hashlib.sha256(block_string.encode()).hexdigest()
 ```
 
-### Contract Structure
+**Why `sort_keys=True`?** Ensures deterministic serialization — without it, different key orderings would produce different hashes for identical data.
 
-```solidity
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+### Proof-of-Work Mining (Lines 44–52)
+```python
+def mine_block(self, difficulty: int):
+    target = '0' * difficulty   # e.g., difficulty=4 → target = "0000"
+    while self.hash[:difficulty] != target:
+        self.nonce += 1
+        self.hash = self.calculate_hash()
+```
 
-contract ModelRegistry {
-    struct ModelMetadata {
-        bytes32 modelHash;      // SHA-256 hash of model parameters
-        uint256 timestamp;      // When model was registered
-        uint256 round;          // FL training round number
-        uint256 accuracy;       // Model accuracy (scaled by 10000)
-        uint256 loss;           // Model loss (scaled by 10000)
-        address submitter;      // Aggregator's Ethereum address
-    }
+**How it works**: The miner increments `nonce` from 0 upward, recalculating the hash each time, until the hash starts with 4 zeros (`0000...`). This requires ~65,536 attempts on average (16⁴). Finding such a hash is computationally expensive but verifying it is instant — this asymmetry is the foundation of blockchain security.
+
+**Example mined block hash**: `0000a7f3b2c1d4e5...` ← starts with 4 zeros
+
+### The Blockchain Class (Lines 66–264)
+
+```python
+class Blockchain:
+    def __init__(self, difficulty=4):
+        self.chain = []                    # List of Block objects
+        self.pending_transactions = []     # Tx pool (unmined)
+        self.difficulty = 4                # PoW difficulty
+        self._create_genesis_block()       # Block #0
+```
+
+#### Genesis Block (Lines 80–95)
+The first block has no predecessor:
+```python
+def _create_genesis_block(self):
+    genesis_block = Block(
+        index=0,
+        timestamp=datetime.now().isoformat(),
+        transactions=[{
+            'type': 'GENESIS',
+            'message': 'CoreChain Genesis Block'
+        }],
+        previous_hash='0'   # No previous block
+    )
+    genesis_block.mine_block(self.difficulty)  # Mine it
+    self.chain.append(genesis_block)
+```
+
+#### Transaction Pool & Auto-Mining (Lines 101–118)
+```python
+def add_transaction(self, transaction):
+    self.pending_transactions.append(transaction)
     
-    mapping(uint256 => ModelMetadata) public models;
-    uint256 public modelCount;
+    # Auto-mine when 5 transactions accumulate
+    if len(self.pending_transactions) >= 5:
+        self.mine_pending_transactions()
     
-    event ModelRegistered(
-        uint256 indexed round,
-        bytes32 modelHash,
-        uint256 accuracy,
-        uint256 loss
-    );
-    
-    function registerModel(
-        bytes32 _modelHash,
-        uint256 _round,
-        uint256 _accuracy,
-        uint256 _loss
-    ) public {
-        models[_round] = ModelMetadata({
-            modelHash: _modelHash,
-            timestamp: block.timestamp,
-            round: _round,
-            accuracy: _accuracy,
-            loss: _loss,
-            submitter: msg.sender
-        });
+    # Return SHA-256 hash of the transaction as receipt
+    tx_hash = hashlib.sha256(
+        json.dumps(transaction, sort_keys=True).encode()
+    ).hexdigest()
+    return tx_hash
+```
+
+#### Chain Validation (Lines 146–167)
+Three integrity checks per block:
+```python
+def is_chain_valid(self):
+    for i in range(1, len(self.chain)):
+        current = self.chain[i]
+        previous = self.chain[i - 1]
         
-        modelCount++;
-        emit ModelRegistered(_round, _modelHash, _accuracy, _loss);
-    }
-    
-    function getModel(uint256 _round) public view returns (
-        bytes32 modelHash,
-        uint256 timestamp,
-        uint256 round,
-        uint256 accuracy,
-        uint256 loss,
-        address submitter
-    ) {
-        ModelMetadata memory model = models[_round];
-        return (
-            model.modelHash,
-            model.timestamp,
-            model.round,
-            model.accuracy,
-            model.loss,
-            model.submitter
-        );
-    }
-}
-```
-
-### Key Features Explained
-
-#### 1. **Model Hashing**
-- **What**: SHA-256 hash of model parameters
-- **Why**: Ensures model integrity without storing large model files on-chain
-- **How**: `bytes32 modelHash` stores 32-byte hash
-
-#### 2. **Scaled Metrics**
-- **Accuracy/Loss Scaling**: Multiplied by 10,000
-- **Example**: 72.59% accuracy → stored as 7259
-- **Why**: Solidity doesn't support floating-point numbers
-- **Conversion**: `uint256 accuracy = uint256(accuracy_float * 10000)`
-
-#### 3. **Event Emission**
-- **Purpose**: Off-chain applications can listen for new models
-- **Event**: `ModelRegistered` emitted after each registration
-- **Use Case**: Dashboard updates, notifications
-
----
-
-## 3. Blockchain Integration (Python)
-
-### File Location
-```
-aggregator/src/blockchain_client.py
-```
-
-### Key Functions
-
-#### Initialize Web3 Connection
-```python
-from web3 import Web3
-
-# Connect to Ganache
-w3 = Web3(Web3.HTTPProvider('http://54.173.119.88:8545'))
-
-# Verify connection
-if w3.is_connected():
-    print("✅ Connected to blockchain")
-```
-
-#### Load Smart Contract
-```python
-import json
-
-# Load contract ABI
-with open('blockchain/contracts/ModelRegistry.json') as f:
-    contract_json = json.load(f)
-    abi = contract_json['abi']
-
-# Contract address (deployed on Ganache)
-contract_address = '0x5FbDB2315678afecb367f032d93F642f64180aa3'
-
-# Create contract instance
-contract = w3.eth.contract(address=contract_address, abi=abi)
-```
-
-#### Register Model on Blockchain
-```python
-def register_model_on_blockchain(round_num, model_params, accuracy, loss):
-    """
-    Register FL model on blockchain
-    
-    Args:
-        round_num: Training round number
-        model_params: NumPy arrays of model weights
-        accuracy: Model accuracy (0-1 float)
-        loss: Model loss (float)
-    """
-    # 1. Hash the model parameters
-    import hashlib
-    import pickle
-    
-    model_bytes = pickle.dumps(model_params)
-    model_hash = hashlib.sha256(model_bytes).hexdigest()
-    model_hash_bytes = bytes.fromhex(model_hash)
-    
-    # 2. Scale metrics for Solidity
-    accuracy_scaled = int(accuracy * 10000)
-    loss_scaled = int(loss * 10000)
-    
-    # 3. Get aggregator account
-    aggregator_account = w3.eth.accounts[0]
-    
-    # 4. Build transaction
-    tx = contract.functions.registerModel(
-        model_hash_bytes,
-        round_num,
-        accuracy_scaled,
-        loss_scaled
-    ).build_transaction({
-        'from': aggregator_account,
-        'nonce': w3.eth.get_transaction_count(aggregator_account),
-        'gas': 2000000,
-        'gasPrice': w3.eth.gas_price
-    })
-    
-    # 5. Sign and send transaction
-    signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-    tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    
-    # 6. Wait for confirmation
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-    
-    print(f"✅ Model registered: {tx_hash.hex()}")
-    return tx_hash.hex()
-```
-
-#### Retrieve Model from Blockchain
-```python
-def get_model_metadata(round_num):
-    """
-    Retrieve model metadata from blockchain
-    
-    Args:
-        round_num: Training round number
+        # 1. Hash integrity — recalculate and compare
+        if current.hash != current.calculate_hash():
+            return False  # Block data was tampered
         
-    Returns:
-        dict: Model metadata
-    """
-    model_data = contract.functions.getModel(round_num).call()
-    
-    return {
-        'model_hash': model_data[0].hex(),
-        'timestamp': model_data[1],
-        'round': model_data[2],
-        'accuracy': model_data[3] / 10000.0,  # Unscale
-        'loss': model_data[4] / 10000.0,      # Unscale
-        'submitter': model_data[5]
-    }
-```
-
----
-
-## 4. Data Storage Architecture
-
-### Storage Locations
-
-#### 1. **X-ray Dataset** (Hospital Nodes)
-- **Location**: `/data/shenzhen/` (inside Docker container)
-- **Format**: PNG images
-- **Size**: 662 chest X-rays total
-  - Training: 529 images
-  - Testing: 133 images
-- **Persistence**: Permanent (Docker volume mount)
-- **Your Role**: Designed volume mounting strategy
-
-#### 2. **Model Parameters** (In-Memory)
-- **Location**: RAM (Flower server & hospital clients)
-- **Format**: NumPy arrays (56 arrays, ~56.7 MB)
-- **Persistence**: Temporary (lost on restart)
-- **Why In-Memory**: Fast access during training
-- **Your Role**: Decided not to persist to disk for performance
-
-#### 3. **Training History** (Hospital Nodes)
-- **Location**: `/data/history.json`
-- **Format**: JSON
-- **Example**:
-```json
-[
-  {
-    "round_number": 1,
-    "timestamp": "2026-02-08 22:51:38",
-    "accuracy": 0.7259,
-    "loss": 0.5842,
-    "tokens_earned": 50,
-    "status": "completed"
-  }
-]
-```
-- **Persistence**: Permanent (if volume mounted)
-- **Your Role**: Designed JSON schema
-
-#### 4. **Blockchain Data** (Aggregator)
-- **Location**: Ganache database (LevelDB format)
-- **Path**: `/app/blockchain/ganache_data/`
-- **Contents**:
-  - Model hashes
-  - Round metadata
-  - Transaction history
-  - Block data
-- **Persistence**: Can be permanent with volume mount
-- **Your Role**: Configured Ganache persistence
-
----
-
-## 5. Model Hashing Strategy
-
-### Why Hash Models?
-1. **Blockchain Efficiency**: Storing 56.7 MB on-chain is expensive
-2. **Integrity Verification**: Hash proves model hasn't been tampered
-3. **Immutability**: Hash changes if even one parameter changes
-4. **Auditability**: Can verify historical models
-
-### Hashing Process
-
-```python
-import hashlib
-import pickle
-import numpy as np
-
-def hash_model_parameters(params):
-    """
-    Create SHA-256 hash of model parameters
-    
-    Args:
-        params: List of NumPy arrays (model weights)
+        # 2. Chain linkage — previous_hash must match
+        if current.previous_hash != previous.hash:
+            return False  # Chain was broken/reordered
         
-    Returns:
-        str: Hexadecimal hash string
-    """
-    # 1. Serialize NumPy arrays to bytes
-    model_bytes = pickle.dumps(params)
+        # 3. Proof-of-Work — hash must start with 0000
+        if not current.hash.startswith('0' * self.difficulty):
+            return False  # PoW was faked
     
-    # 2. Compute SHA-256 hash
-    hash_obj = hashlib.sha256(model_bytes)
-    
-    # 3. Get hexadecimal representation
-    model_hash = hash_obj.hexdigest()
-    
-    return model_hash
-
-# Example usage
-model_params = model.get_weights()  # 56 NumPy arrays
-model_hash = hash_model_parameters(model_params)
-print(f"Model Hash: {model_hash}")
-# Output: "a3f5b8c2d1e4f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1"
+    return True
 ```
 
-### Hash Verification
+**Why this matters for the panel**: If anyone modifies even a single byte in Block #3, its hash changes, which breaks Block #4's `previous_hash` pointer, which cascades and invalidates every subsequent block. This is how immutability works.
+
+---
+
+## 3. Smart Contracts — `smart_contracts.py`
+
+### 3.1 ModelUpdateValidator (Lines 22–71)
+
+Validates every hospital model submission before it's accepted:
 
 ```python
-def verify_model_integrity(params, expected_hash):
-    """
-    Verify model parameters match expected hash
-    
-    Args:
-        params: Model parameters to verify
-        expected_hash: Hash from blockchain
+class ModelUpdateValidator(SmartContract):
+    def execute(self, update_data):
+        # Check 1: Required fields exist
+        for field in ['hospital_id', 'round', 'accuracy', 'samples_trained']:
+            if field not in update_data:
+                return False, f"Missing: {field}"
         
-    Returns:
-        bool: True if hash matches
-    """
-    actual_hash = hash_model_parameters(params)
-    return actual_hash == expected_hash
+        # Check 2: Hospital is registered on-chain
+        registrations = self.blockchain.get_transactions_by_type('HOSPITAL_REGISTRATION')
+        if not any(reg['hospital_id'] == hospital_id for reg in registrations):
+            return False, "Hospital not registered"
+        
+        # Check 3: Accuracy is in valid range [0.0, 1.0]
+        if not (0.0 <= accuracy <= 1.0):
+            return False, "Invalid accuracy"
+        
+        # Check 4: No duplicate submissions per round
+        existing = [tx for tx in self.blockchain.get_transactions_by_hospital(hospital_id)
+                     if tx.get('type') == 'MODEL_UPDATE' and tx.get('round') == round_num]
+        if existing:
+            return False, "Duplicate submission"
+        
+        return True, "Validation successful"
 ```
 
----
+### 3.2 RewardDistributor (Lines 74–168)
 
-## 6. Ganache Configuration
-
-### File Location
-```
-aggregator/src/main.py (Ganache startup)
-```
-
-### Ganache Setup
+**The exact reward formula** (this is what appears on the dashboard leaderboard):
 
 ```python
-import subprocess
-
-def start_ganache():
-    """Start Ganache blockchain"""
-    ganache_cmd = [
-        'ganache-cli',
-        '--port', '8545',
-        '--networkId', '1337',
-        '--accounts', '10',
-        '--defaultBalanceEther', '1000',
-        '--gasLimit', '8000000',
-        '--gasPrice', '20000000000',
-        '--db', '/app/blockchain/ganache_data'  # Persistence
-    ]
+def execute(self, hospital_id, round_num, accuracy, samples_contributed, total_samples):
+    # Step 1: Base reward (flat fee for participating)
+    reward = 10.0
     
-    subprocess.Popen(ganache_cmd)
+    # Step 2: Accuracy bonus (0–5 tokens)
+    accuracy_bonus = accuracy * 5.0     # e.g., 0.85 accuracy → 4.25 tokens
+    reward += accuracy_bonus
+    
+    # Step 3: Sample contribution bonus (0–5 tokens)
+    contribution_ratio = samples_contributed / total_samples
+    sample_bonus = contribution_ratio * 5.0  # e.g., 600/1000 → 3.0 tokens
+    reward += sample_bonus
+    
+    # Step 4: Quality multiplier (>90% accuracy → 1.2x)
+    if accuracy > 0.9:
+        reward *= 1.2
+    
+    return round(reward, 2)
 ```
 
-### Configuration Explained
+**Full formula**:
+```
+reward = (base + accuracy_bonus + sample_bonus) × quality_multiplier
 
-| Parameter | Value | Why |
-|-----------|-------|-----|
-| `--port` | 8545 | Standard Ethereum RPC port |
-| `--networkId` | 1337 | Custom network ID for development |
-| `--accounts` | 10 | Pre-funded accounts for testing |
-| `--defaultBalanceEther` | 1000 | Each account starts with 1000 ETH |
-| `--gasLimit` | 8000000 | High limit for complex transactions |
-| `--db` | `/app/blockchain/ganache_data` | Persist blockchain data |
-
----
-
-## 7. Data Persistence Strategy
-
-### Your Design Decisions
-
-#### What to Persist
-✅ **X-ray Dataset**: Permanent (large, static)
-✅ **Training History**: Permanent (audit trail)
-✅ **Blockchain Data**: Permanent (immutable record)
-
-#### What NOT to Persist
-❌ **Model Parameters**: Temporary (can retrain)
-❌ **Dashboard State**: Temporary (UI state)
-❌ **Application Logs**: Temporary (debugging only)
-
-### Docker Volume Mounts
-
-```yaml
-# docker-compose.yml
-services:
-  hospital:
-    volumes:
-      - ./data:/data                    # Dataset persistence
-      - hospital_history:/data/history  # Training history
-      
-  aggregator:
-    volumes:
-      - blockchain_data:/app/blockchain/ganache_data  # Blockchain persistence
-
-volumes:
-  hospital_history:
-  blockchain_data:
+Where:
+  base            = 10.0 tokens
+  accuracy_bonus  = local_accuracy × 5.0
+  sample_bonus    = (hospital_samples / total_samples) × 5.0
+  quality_mult    = 1.2 if accuracy > 0.9, else 1.0
 ```
 
----
-
-## 8. Blockchain Transaction Flow
-
-### Complete Workflow
-
+**Example**: Hospital Alpha with 85% accuracy, contributed 600 out of 1000 total samples:
 ```
-1. FL Round Completes
-   ↓
-2. Aggregator computes global model
-   ↓
-3. Hash model parameters (SHA-256)
-   ↓
-4. Scale accuracy/loss (× 10000)
-   ↓
-5. Build Ethereum transaction
-   ↓
-6. Sign with aggregator's private key
-   ↓
-7. Send to Ganache blockchain
-   ↓
-8. Wait for transaction receipt
-   ↓
-9. Emit ModelRegistered event
-   ↓
-10. Dashboard updates with tx hash
+= (10.0 + 0.85×5.0 + 0.6×5.0) × 1.0
+= (10.0 + 4.25 + 3.0) × 1.0
+= 17.25 tokens
 ```
 
-### Transaction Details
+### 3.3 AuditLogger (Lines 171–277)
+
+Records every event immutably and provides queryable audit trail:
 
 ```python
-# Example transaction receipt
-{
-    'transactionHash': '0x1a2b3c4d...',
-    'blockNumber': 42,
-    'gasUsed': 125000,
-    'status': 1,  # Success
-    'logs': [
-        {
-            'event': 'ModelRegistered',
-            'args': {
-                'round': 1,
-                'modelHash': '0xa3f5b8c2...',
-                'accuracy': 7259,
-                'loss': 5842
-            }
-        }
-    ]
+class AuditLogger(SmartContract):
+    def execute(self, event_type, event_data):
+        transaction = {'type': event_type, **event_data, 'timestamp': datetime.now().isoformat()}
+        return self.blockchain.add_transaction(transaction)
+    
+    def get_audit_trail(self, hospital_id=None, event_type=None, limit=100):
+        # Filters: by hospital, by event type, with pagination
+        
+    def get_training_summary(self):
+        # Returns: total_rounds, total_updates, participating_hospitals,
+        #          avg_accuracy, best_accuracy, latest_global_accuracy
+```
+
+---
+
+## 4. Blockchain REST API — `fabric_api.py`
+
+17 endpoints running on **port 7050** inside the blockchain container:
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| `POST` | `/api/blockchain/transaction` | Submit new transaction |
+| `POST` | `/api/blockchain/mine` | Manually trigger mining |
+| `GET` | `/api/blockchain/chain` | Get entire chain |
+| `GET` | `/api/blockchain/block/{index}` | Get specific block |
+| `GET` | `/api/blockchain/validate` | Validate chain integrity |
+| `GET` | `/api/blockchain/stats` | Get blockchain statistics |
+| `GET` | `/api/blockchain/transactions` | Get all transactions (newest first) |
+| `GET` | `/api/blockchain/transactions/type/{type}` | Filter by transaction type |
+| `GET` | `/api/blockchain/hospital/{id}/transactions` | Get hospital's transactions |
+| `GET` | `/api/blockchain/hospital/{id}/rewards` | Get hospital's total rewards |
+| `GET` | `/api/blockchain/leaderboard` | Hospital ranking by rewards |
+| `GET` | `/api/blockchain/audit` | Queryable audit trail |
+| `GET` | `/api/blockchain/training/summary` | Training activity summary |
+| `POST` | `/api/blockchain/validate/update` | Validate model update via smart contract |
+
+### How the Dashboard Accesses the Blockchain
+
+The dashboard (browser) can't directly hit port 7050 (firewall). Instead, NGINX proxies it:
+
+```
+Browser → http://54.91.23.82/blockchain-api/stats
+         ↓ NGINX reverse proxy
+NGINX  → http://127.0.0.1:7050/stats
+         ↓
+Blockchain API → returns stats JSON
+```
+
+Configured in `dashboard/nginx.conf` lines 49–53:
+```nginx
+location /blockchain-api/ {
+    proxy_pass http://127.0.0.1:7050/;
 }
 ```
 
 ---
 
-## 9. Key Files You Should Know
+## 5. Transaction Types & Data Flow
 
-### Blockchain Files
-| File | Purpose | Your Contribution |
-|------|---------|-------------------|
-| `blockchain/contracts/ModelRegistry.sol` | Smart contract | Wrote entire contract |
-| `aggregator/src/blockchain_client.py` | Web3 integration | Implemented all functions |
-| `blockchain/deploy.py` | Contract deployment | Created deployment script |
+### Every transaction type that flows through the blockchain:
 
-### Storage Files
-| File | Purpose | Your Contribution |
-|------|---------|-------------------|
-| `hospital_node/src/persistence.py` | Data persistence utilities | Designed storage strategy |
-| `docker-compose.yml` | Volume mounts | Configured persistence |
-| `/data/history.json` | Training history | Designed JSON schema |
+| Type | Triggered When | Data Recorded | Logged By |
+|------|---------------|---------------|-----------|
+| `GENESIS` | Chain creation | Genesis message | Blockchain init |
+| `HOSPITAL_REGISTRATION` | Hospital connects via gRPC | hospital_id, name, dataset_size, dataset_type | grpc_server.py |
+| `MODEL_UPDATE` | Hospital sends trained weights | hospital_id, round, accuracy, loss, samples_trained | flower_server.py |
+| `MODEL_AGGREGATION` | Server aggregates all weights | round, global_accuracy, global_loss, participants, total_samples | flower_server.py |
+| `REWARD_DISTRIBUTION` | After aggregation | hospital_id, round, reward_tokens, accuracy, samples_contributed | flower_server.py |
+
+### Complete Data Flow for One Training Round
+
+```
+Hospital Alpha trains locally
+    ↓
+Sends weights + metrics to Flower server
+    ↓
+flower_server.py aggregate_fit() fires:
+    ├── Logs MODEL_UPDATE to blockchain (per hospital)
+    ├── Runs FedAvg aggregation
+    ├── Logs MODEL_AGGREGATION to blockchain
+    ├── Calculates reward via _calculate_reward()
+    └── Logs REWARD_DISTRIBUTION to blockchain (per hospital)
+    ↓
+Blockchain auto-mines when 5 transactions accumulate
+    ↓
+Dashboard polls /blockchain-api/stats → displays live count
+Dashboard polls /api/blockchain/transactions → shows audit trail
+```
 
 ---
 
-## 10. Presentation Talking Points
+## 6. Data Persistence Architecture
+
+### What Gets Persisted Where
+
+| Data | Location | Format | Persistence |
+|------|----------|--------|-------------|
+| Blockchain chain | `/app/data/blockchain.json` | JSON | ✅ Saved on shutdown, loaded on startup |
+| X-ray dataset | `/data/` (Docker volume) | Synthetic NumPy arrays | ✅ Generated on boot |
+| Training state | In-memory (`training_state` dict) | Python dict | ❌ Lost on restart |
+| Model weights | In-memory (Flower) | NumPy arrays | ❌ Lost on restart |
+| Hospital registry | In-memory (`registered_hospitals`) | Python dict | ❌ But reconstructable from blockchain |
+
+### Blockchain File Persistence (fabric_api.py lines 61–80)
+
+```python
+@app.on_event("startup")
+async def startup_event():
+    blockchain.load_from_file('/app/data/blockchain.json')  # Restore chain
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    blockchain.save_to_file('/app/data/blockchain.json')    # Persist chain
+```
+
+---
+
+## 7. Presentation Talking Points
 
 ### Opening (30 seconds)
-"I handled the blockchain integration and data storage architecture. Our system uses Ethereum smart contracts to create an immutable audit trail of all federated learning rounds, ensuring transparency and trust among participating hospitals."
+"I built CoreChain's custom blockchain from scratch in Python — not using Ethereum or any third-party platform. Every federated learning event is permanently recorded with SHA-256 Proof-of-Work consensus, creating an immutable audit trail that no single party can manipulate."
 
-### Technical Deep Dive (2 minutes)
+### Technical Deep Dive (3 minutes)
 
-**Blockchain Choice:**
-"We chose Ethereum with Ganache because it provides immutability, transparency, and a complete audit trail. Each FL round's model is hashed using SHA-256 and stored on-chain along with accuracy and loss metrics."
+**Blockchain Design:**
+"Each block contains a list of transactions, a SHA-256 hash, and a pointer to the previous block's hash. Mining requires finding a nonce that makes the block hash start with four zeros — this takes roughly 65,000 iterations on average and makes tampering computationally infeasible."
 
-**Smart Contract:**
-"The ModelRegistry contract stores model metadata in a mapping structure. Since Solidity doesn't support floating-point numbers, we scale accuracy and loss by 10,000. For example, 72.59% accuracy is stored as 7259."
+**Smart Contracts:**
+"I implemented three smart contracts in Python:
+1. **ModelUpdateValidator** — validates every hospital submission (checks registration, accuracy range, prevents duplicates)
+2. **RewardDistributor** — calculates token rewards using a three-component formula: base participation fee, accuracy bonus, and sample contribution ratio, with a 1.2x multiplier for >90% accuracy
+3. **AuditLogger** — provides queryable audit trail with filters by hospital and event type"
 
-**Storage Strategy:**
-"I designed a three-tier storage strategy:
-1. **Permanent storage** for datasets and blockchain data
-2. **In-memory** for model parameters during training (performance)
-3. **JSON persistence** for training history (audit trail)"
+**Chain Integrity:**
+"Validation checks three things per block: hash recalculation matches stored hash, previous_hash matches the prior block, and the hash satisfies Proof-of-Work difficulty. If someone tampers with Block 3, it cascades and invalidates every block after it."
 
 ### Demo Points
-1. Show `ModelRegistry.sol` contract structure
-2. Explain hashing in `blockchain_client.py`
-3. Show transaction on Ganache
-4. Display training history JSON
+1. Open `http://54.91.23.82/` → scroll to "Blockchain Statistics" — show live block count
+2. Show "Recent Blockchain Transactions" section — point out HOSPITAL_REGISTRATION, MODEL_UPDATE, REWARD_DISTRIBUTION
+3. Hit `http://54.91.23.82/blockchain-api/api/blockchain/validate` in browser — shows `{"is_valid": true}`
+4. Hit `http://54.91.23.82/blockchain-api/api/blockchain/leaderboard` — shows hospital rankings
+5. Open `blockchain/src/blockchain_core.py` — walk through `mine_block()` and `is_chain_valid()`
 
 ### Closing (30 seconds)
-"This blockchain integration ensures that no single party can manipulate training results, and all hospitals have verifiable proof of each model update. The storage architecture balances performance with data persistence needs."
+"This blockchain ensures complete transparency — hospitals can audit every model update, every weight aggregation, and every reward distribution. The Proof-of-Work consensus guarantees that no entity can retroactively alter the training history."
 
 ---
 
-## 11. Common Questions & Answers
+## 8. Panel Q&A Preparation
 
-**Q: Why not store the entire model on blockchain?**
-A: "Storing 56.7 MB per round would be extremely expensive and slow. Instead, we hash the model (32 bytes) and store the hash, which provides integrity verification without the storage cost."
+**Q: Why build a custom blockchain instead of using Ethereum?**
+A: "Ethereum requires gas fees, external node infrastructure, and adds unnecessary complexity. Our custom blockchain gives us full control, zero cost, and the same core guarantees — immutability, transparency, and tamper-proof audit trails. For a healthcare research system, this is more practical."
 
-**Q: What if Ganache crashes?**
-A: "We configured Ganache with the `--db` flag to persist blockchain data to disk. If it crashes, we can restart it and all transaction history is preserved."
+**Q: What happens if someone tampers with a block?**
+A: "The hash changes, which breaks the chain linkage to the next block, which cascades and invalidates every subsequent block. Our `is_chain_valid()` method detects this by recalculating all hashes and checking chain linkage on every validation call."
 
-**Q: How do you prevent double-spending or fraud?**
-A: "Each transaction is signed with the aggregator's private key. The blockchain validates signatures and prevents unauthorized model registrations."
+**Q: How is data persisted?**
+A: "The blockchain is serialized to JSON on container shutdown and reloaded on startup. This means the audit trail survives restarts. Model weights are intentionally kept in-memory for performance — they can be retrained, but the blockchain record of their hashes is permanent."
 
-**Q: Can hospitals verify model integrity?**
-A: "Yes! Hospitals can retrieve the model hash from the blockchain and compare it with the hash of parameters they receive. If hashes match, the model is authentic."
+**Q: How are rewards fair?**
+A: "The formula has three components: a flat participation fee (10 tokens), an accuracy bonus proportional to local model quality (0–5 tokens), and a contribution bonus proportional to dataset size relative to total (0–5 tokens). Hospitals with larger, higher-quality datasets earn proportionally more."
 
-**Q: Why Ethereum and not another blockchain?**
-A: "Ethereum has mature tooling (Web3.py, Ganache), strong community support, and smart contract capabilities. For production, we could migrate to a private Ethereum network or other enterprise blockchains."
-
----
-
-## 12. Metrics to Mention
-
-- **Smart Contract Size**: ~200 lines of Solidity
-- **Transaction Gas Cost**: ~125,000 gas per model registration
-- **Block Time**: Instant (Ganache development mode)
-- **Storage Efficiency**: 32 bytes (hash) vs 56.7 MB (full model) = **99.9% reduction**
-- **Data Persistence**: 100% of blockchain data, training history, and datasets
+**Q: Can a hospital cheat by submitting fake accuracy?**
+A: "The ModelUpdateValidator smart contract checks that accuracy is in [0,1] range and prevents duplicate submissions. In production, we'd add gradient-level validation. But even with inflated accuracy, the FedAvg aggregation on the server side would detect inconsistent weights."
 
 ---
 
-## 13. Future Enhancements (If Asked)
+## 9. Key Code References
 
-1. **IPFS Integration**: Store full models on IPFS, only hash on blockchain
-2. **Access Control**: Add role-based permissions to smart contract
-3. **Multi-Signature**: Require multiple hospitals to approve model updates
-4. **Gas Optimization**: Batch multiple rounds into single transaction
-5. **Private Blockchain**: Deploy on Hyperledger or Quorum for production
-
----
-
-## Summary Checklist
-
-Before presentation, make sure you can explain:
-- ✅ Why we use blockchain (immutability, transparency, audit trail)
-- ✅ Smart contract structure and key functions
-- ✅ Model hashing process and SHA-256
-- ✅ Accuracy/loss scaling (× 10000)
-- ✅ Storage architecture (3-tier strategy)
-- ✅ Ganache configuration and persistence
-- ✅ Transaction flow from FL round to blockchain
-- ✅ File locations for all blockchain code
-- ✅ Storage efficiency (99.9% reduction)
-- ✅ How hospitals verify model integrity
-
-**You've got this! 🚀**
+| What to show | File | Lines | Key function |
+|---|---|---|---|
+| Block structure | `blockchain/src/blockchain_core.py` | 14–63 | `Block.__init__`, `calculate_hash`, `mine_block` |
+| PoW mining | `blockchain/src/blockchain_core.py` | 44–52 | `mine_block()` |
+| Chain validation | `blockchain/src/blockchain_core.py` | 146–167 | `is_chain_valid()` |
+| Reward formula | `blockchain/src/smart_contracts.py` | 81–127 | `RewardDistributor.execute()` |
+| Update validation | `blockchain/src/smart_contracts.py` | 25–71 | `ModelUpdateValidator.execute()` |
+| Leaderboard | `blockchain/src/smart_contracts.py` | 129–168 | `get_leaderboard()` |
+| REST API endpoints | `blockchain/src/fabric_api.py` | 83–282 | All `@app.get/post` routes |
+| Transaction logging | `aggregator/src/flower_server.py` | 53–120 | `aggregate_fit()` |

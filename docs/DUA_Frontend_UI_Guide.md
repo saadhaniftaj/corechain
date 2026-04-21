@@ -1,693 +1,386 @@
-# Dua's Presentation Guide: Frontend & UI
+# Dua's Final Panel Guide: Frontend Dashboard & UI
 
 ## Your Responsibility
-**Frontend Development and User Interface Design**
+**Aggregator Dashboard Design, Real-Time Data Visualization, API Integration, and User Experience**
 
-You handled all frontend components, dashboard design, UI/UX decisions, and API integration for both hospital and aggregator dashboards.
+You built the central CoreChain monitoring dashboard — a single-page application that provides real-time visibility into federated learning training, hospital connections, blockchain audit trails, accuracy/loss charting, and the reward leaderboard.
 
 ---
 
 ## 1. Frontend Architecture Overview
 
 ### Technology Stack
-- **HTML5**: Semantic structure
-- **CSS3**: Custom styling (no frameworks for maximum control)
-- **JavaScript (Vanilla)**: Client-side logic and API calls
-- **FastAPI**: Backend API endpoints
-- **Real-time Updates**: Polling-based data refresh
 
-### Why Vanilla CSS/JS?
-1. **Maximum Control**: No framework limitations
-2. **Performance**: No heavy library overhead
-3. **Customization**: Complete design freedom
-4. **Learning**: Better understanding of fundamentals
-5. **Lightweight**: Faster page loads
+| Technology | Purpose | Why Chosen |
+|---|---|---|
+| **HTML5** | Semantic page structure | Native, no build step |
+| **CSS3 (Custom)** | Design system + animations | Full control, no framework bloat |
+| **Vanilla JavaScript** | Fetch API, DOM manipulation, polling | Zero dependencies, ~400 lines |
+| **Chart.js 4.4.0** | Accuracy/Loss/Reward charts | Lightweight, beautiful charts |
+| **Inter (Google Font)** | Modern typography | Clean, professional, medical-grade |
+| **NGINX** | Static file serving + reverse proxy | Routes `/api/` and `/blockchain-api/` |
+
+### File Structure
+```
+dashboard/
+├── index.html          ← Single file: HTML + CSS + JS (639 lines)
+├── login.html          ← JWT authentication page
+├── nginx.conf          ← Reverse proxy configuration
+└── Dockerfile          ← NGINX-based container
+```
+
+### Architecture Flow
+```
+Browser (port 80)
+    ↓ HTTP
+NGINX (dashboard container)
+    ├── /                  → serves index.html (static)
+    ├── /login             → serves login.html
+    ├── /api/*             → proxy to aggregator REST API (:8000)
+    ├── /blockchain-api/*  → proxy to blockchain API (:7050)
+    └── /ws                → proxy to WebSocket server (:8001)
+```
 
 ---
 
-## 2. Hospital Dashboard
+## 2. Design System — CSS Variables (Lines 11–23)
 
-### File Location
-```
-hospital_node/dashboard/index.html
-```
-
-### Design Philosophy
-
-**Color Scheme:**
-- Pearl White Background: `#f8f9fa`
-- Yellow Primary: `#fbbf24` (trust, optimism)
-- Dark Text: `#1f2937` (readability)
-- Accent Yellow: `#f59e0b`
-
-**Why These Colors?**
-- **Yellow**: Associated with healthcare, warmth, and trust
-- **White/Pearl**: Clean, medical, professional
-- **High Contrast**: Accessibility for medical professionals
-
-### Key UI Components
-
-#### 1. **Status Cards**
-```html
-<div class="status-card">
-    <div class="status-icon">🏥</div>
-    <div class="status-info">
-        <div class="status-label">Hospital Status</div>
-        <div class="status-value" id="hospital-status">Connected</div>
-    </div>
-</div>
-```
-
-**CSS Styling:**
 ```css
-.status-card {
-    background: var(--card-white);
-    border-radius: 12px;
-    padding: 24px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    transition: transform 0.2s, box-shadow 0.2s;
+:root {
+    --pearl: #f8f9fa;          /* Page background */
+    --pearl-dark: #e9ecef;     /* Section backgrounds */
+    --yellow: #fbbf24;         /* Primary brand color */
+    --yellow-dark: #f59e0b;    /* Hover states, accents */
+    --text-dark: #1f2937;      /* Headings, primary text */
+    --text-light: #6b7280;     /* Secondary text, labels */
+    --card: #ffffff;           /* Card backgrounds */
+    --border: #e5e7eb;         /* Dividers, borders */
+    --green: #10b981;          /* Connected/success states */
+    --red: #ef4444;            /* Error/offline states */
+    --blue: #3b82f6;           /* Info accents */
 }
+```
 
-.status-card:hover {
+**Color Psychology:**
+- **Yellow/Amber** (#fbbf24): Warmth, trust, optimism — appropriate for healthcare
+- **Pearl White** (#f8f9fa): Clinical cleanliness, professional
+- **Dark Gray** (#1f2937): High-contrast readability
+
+---
+
+## 3. Page Layout — 5 Tabbed Sections
+
+The dashboard uses a **tab-based navigation** system with 5 panels:
+
+### Tab Bar (Lines 49–53)
+```css
+.tab-bar { display: flex; gap: 0.4rem; background: var(--pearl-dark); 
+           border-radius: 12px; padding: 4px; }
+.tab-btn.active { background: var(--card); color: var(--text-dark); 
+                  box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+```
+
+| Tab | Content | Key Data |
+|-----|---------|----------|
+| **Training** | Progress bar, round indicator, hospital list | `current_round`, `connected_hospitals` |
+| **Accuracy** | Chart.js line chart of accuracy per round | `accuracy_history[]` |
+| **Loss** | Chart.js line chart of loss per round | `loss_history[]` |
+| **Leaderboard** | Hospital rankings by reward tokens | `/api/rewards` |
+| **Audit Trail** | Blockchain transaction log | `/blockchain-api/api/blockchain/transactions` |
+
+---
+
+## 4. Hero Section — Top Metrics Cards (Lines 56–100)
+
+Four real-time status cards at the top:
+
+```
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  Waiting/     │ │  Current     │ │  Global      │ │  Connected   │
+│  Training     │ │  Round       │ │  Accuracy    │ │  Hospitals   │
+│  Status       │ │  3/10        │ │  0.7842      │ │  2           │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
+```
+
+**Card hover animation:**
+```css
+.metric-card:hover {
     transform: translateY(-4px);
-    box-shadow: 0 4px 16px rgba(251, 191, 36, 0.15);
+    box-shadow: 0 12px 24px rgba(251,191,36,0.12);
 }
 ```
-
-**Why This Design?**
-- **Hover Effect**: Provides interactivity feedback
-- **Soft Shadows**: Modern, professional look
-- **Rounded Corners**: Friendly, approachable
-- **Yellow Glow on Hover**: Reinforces brand color
-
-#### 2. **Training Progress Section**
-```html
-<div class="training-section">
-    <h2>Training Progress</h2>
-    <div class="progress-container">
-        <div class="progress-bar">
-            <div class="progress-fill" id="progress-fill"></div>
-        </div>
-        <div class="progress-text" id="progress-text">Round 2 of 10</div>
-    </div>
-</div>
-```
-
-**Progress Bar Animation:**
-```css
-.progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #fbbf24, #f59e0b);
-    border-radius: 8px;
-    transition: width 0.5s ease-in-out;
-    position: relative;
-    overflow: hidden;
-}
-
-.progress-fill::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    right: 0;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(255, 255, 255, 0.3),
-        transparent
-    );
-    animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-    0% { transform: translateX(-100%); }
-    100% { transform: translateX(100%); }
-}
-```
-
-**Why This Animation?**
-- **Visual Feedback**: Shows system is active
-- **Professional**: Subtle, not distracting
-- **Engaging**: Keeps user interested
-
-#### 3. **Metrics Display**
-```html
-<div class="metrics-grid">
-    <div class="metric-card">
-        <div class="metric-label">Accuracy</div>
-        <div class="metric-value" id="accuracy">72.59%</div>
-        <div class="metric-trend positive">↑ 2.3%</div>
-    </div>
-    <div class="metric-card">
-        <div class="metric-label">Loss</div>
-        <div class="metric-value" id="loss">0.5842</div>
-        <div class="metric-trend negative">↓ 0.12</div>
-    </div>
-</div>
-```
-
-**Trend Indicators:**
-```css
-.metric-trend {
-    font-size: 14px;
-    font-weight: 600;
-    margin-top: 8px;
-}
-
-.metric-trend.positive {
-    color: #10b981; /* Green for good */
-}
-
-.metric-trend.negative {
-    color: #ef4444; /* Red for bad (but good for loss) */
-}
-```
-
-**UX Decision**: Color-coded trends help users quickly understand performance
-
-#### 4. **Training History Table**
-```html
-<table class="history-table">
-    <thead>
-        <tr>
-            <th>Round</th>
-            <th>Timestamp</th>
-            <th>Accuracy</th>
-            <th>Loss</th>
-            <th>Tokens</th>
-            <th>Status</th>
-        </tr>
-    </thead>
-    <tbody id="history-tbody">
-        <!-- Populated via JavaScript -->
-    </tbody>
-</table>
-```
-
-**Table Styling:**
-```css
-.history-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border-radius: 8px;
-    overflow: hidden;
-}
-
-.history-table th {
-    background: linear-gradient(135deg, #fbbf24, #f59e0b);
-    color: #1f2937;
-    padding: 16px;
-    text-align: left;
-    font-weight: 700;
-}
-
-.history-table tr:nth-child(even) {
-    background: #f9fafb;
-}
-
-.history-table tr:hover {
-    background: #fef3c7;
-    transition: background 0.2s;
-}
-```
-
-**Why Zebra Striping?**
-- **Readability**: Easier to track rows
-- **Professional**: Standard for data tables
-- **Hover Effect**: Shows which row user is viewing
 
 ---
 
-## 3. API Integration
+## 5. JavaScript — API Integration & Polling
 
-### File Location
-```
-hospital_node/dashboard/index.html (JavaScript section)
-```
-
-### Fetching Data from Backend
-
-#### Get Status
+### Core Configuration (Lines 349–351)
 ```javascript
-async function fetchStatus() {
-    try {
-        const response = await fetch('/api/status');
-        const data = await response.json();
-        
-        // Update UI
-        document.getElementById('hospital-name').textContent = data.hospital_name;
-        document.getElementById('hospital-status').textContent = 
-            data.aggregator_connected ? 'Connected' : 'Disconnected';
-        document.getElementById('training-status').textContent = data.training_status;
-        
-        // Update progress
-        const progress = (data.current_round / data.total_rounds) * 100;
-        document.getElementById('progress-fill').style.width = `${progress}%`;
-        document.getElementById('progress-text').textContent = 
-            `Round ${data.current_round} of ${data.total_rounds}`;
-            
-    } catch (error) {
-        console.error('Failed to fetch status:', error);
-        showError('Unable to connect to server');
-    }
-}
+const API_URL = '';                          // Same-origin (proxied by NGINX)
+const BLOCKCHAIN_URL = '/blockchain-api';    // NGINX proxies to :7050
 ```
 
-**Error Handling:**
+### The Polling Loop (Lines 355–365)
 ```javascript
-function showError(message) {
-    const errorDiv = document.createElement('div');
-    errorDiv.className = 'error-toast';
-    errorDiv.textContent = message;
-    document.body.appendChild(errorDiv);
-    
-    setTimeout(() => {
-        errorDiv.classList.add('fade-out');
-        setTimeout(() => errorDiv.remove(), 300);
-    }, 3000);
-}
-```
-
-**CSS for Error Toast:**
-```css
-.error-toast {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    background: #ef4444;
-    color: white;
-    padding: 16px 24px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    animation: slideIn 0.3s ease-out;
-    z-index: 1000;
-}
-
-@keyframes slideIn {
-    from {
-        transform: translateX(400px);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
-}
-```
-
-#### Get Training History
-```javascript
-async function fetchTrainingHistory() {
-    try {
-        const response = await fetch('/api/rounds');
-        const rounds = await response.json();
-        
-        const tbody = document.getElementById('history-tbody');
-        tbody.innerHTML = '';
-        
-        rounds.forEach(round => {
-            const row = document.createElement('tr');
-            row.innerHTML = `
-                <td>${round.round_number}</td>
-                <td>${formatTimestamp(round.timestamp)}</td>
-                <td class="metric-positive">${(round.accuracy * 100).toFixed(2)}%</td>
-                <td class="metric-neutral">${round.loss.toFixed(4)}</td>
-                <td>${round.tokens_earned}</td>
-                <td><span class="status-badge ${round.status}">${round.status}</span></td>
-            `;
-            tbody.appendChild(row);
-        });
-        
-    } catch (error) {
-        console.error('Failed to fetch history:', error);
-    }
-}
-```
-
-**Status Badges:**
-```css
-.status-badge {
-    padding: 4px 12px;
-    border-radius: 12px;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-}
-
-.status-badge.completed {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.status-badge.in-progress {
-    background: #fef3c7;
-    color: #92400e;
-}
-
-.status-badge.failed {
-    background: #fee2e2;
-    color: #991b1b;
-}
-```
-
-### Real-Time Updates
-
-```javascript
-// Poll for updates every 5 seconds
+// Poll every 5 seconds for live data
 setInterval(() => {
-    fetchStatus();
-    fetchTrainingHistory();
+    loadStatus();           // GET /api/status → top metrics
+    loadHospitals();        // GET /api/hospitals → hospital cards
+    loadMetricsHistory();   // GET /api/metrics/history → chart data
+    loadBlockchainStats();  // GET /blockchain-api/api/blockchain/stats
+    loadTransactions();     // GET /blockchain-api/api/blockchain/transactions
+    loadRewards();          // GET /api/rewards → leaderboard
 }, 5000);
+```
 
-// Initial load
-document.addEventListener('DOMContentLoaded', () => {
-    fetchStatus();
-    fetchTrainingHistory();
+### loadStatus() — Top Metrics Update (Lines 370–410)
+```javascript
+async function loadStatus() {
+    const res = await fetch(`${API_URL}/api/status`);
+    const data = await res.json();
+    
+    // Update hero cards
+    document.getElementById('status-text').textContent = 
+        data.is_training ? 'Training' : 'Waiting for Hospitals';
+    document.getElementById('current-round').textContent = 
+        `${data.current_round}/${data.total_rounds}`;
+    document.getElementById('global-accuracy').textContent = 
+        data.global_accuracy.toFixed(4);
+    document.getElementById('connected-hospitals').textContent = 
+        data.connected_hospitals;
+    
+    // Update progress bar width
+    const pct = data.progress_percentage;
+    document.getElementById('progress-fill').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = Math.round(pct) + '%';
+}
+```
+
+### loadMetricsHistory() — Chart Updates (Lines 420–460)
+```javascript
+async function loadMetricsHistory() {
+    const res = await fetch(`${API_URL}/api/metrics/history`);
+    const data = await res.json();
+    
+    if (data.accuracy_history && data.accuracy_history.length > 0) {
+        // Update Chart.js accuracy chart
+        accuracyChart.data.labels = data.accuracy_history.map((_, i) => `R${i+1}`);
+        accuracyChart.data.datasets[0].data = data.accuracy_history;
+        accuracyChart.update();
+        
+        // Update loss chart
+        lossChart.data.labels = data.loss_history.map((_, i) => `R${i+1}`);
+        lossChart.data.datasets[0].data = data.loss_history;
+        lossChart.update();
+    }
+}
+```
+
+### loadBlockchainStats() — Blockchain Section (Lines 461–482)
+```javascript
+async function loadBlockchainStats() {
+    try {
+        const res = await fetch(`${BLOCKCHAIN_URL}/api/blockchain/stats`);
+        const stats = await res.json();
+        
+        document.getElementById('blockchain-blocks').textContent = stats.total_blocks;
+        document.getElementById('blockchain-txs').textContent = stats.total_transactions;
+        document.getElementById('blockchain-valid').textContent = 
+            stats.is_valid ? '✅ Valid' : '❌ Corrupted';
+        document.getElementById('blockchain-status').textContent = 'Online';
+    } catch (e) {
+        document.getElementById('blockchain-status').textContent = 
+            'Blockchain service offline';
+    }
+}
+```
+
+**IMPORTANT**: The `BLOCKCHAIN_URL` was changed from `http://${window.location.hostname}:7050` (which failed because port 7050 is firewalled) to `/blockchain-api` (which routes through NGINX on port 80). This was the fix for the "Blockchain service offline" bug.
+
+### loadHospitals() — Hospital Cards
+```javascript
+async function loadHospitals() {
+    const res = await fetch(`${API_URL}/api/hospitals`);
+    const data = await res.json();
+    
+    const container = document.getElementById('hospitals-container');
+    container.innerHTML = data.hospitals.map(h => `
+        <div class="hospital-card">
+            <div class="hospital-header">
+                <span class="hospital-name">${h.hospital_name}</span>
+                <span class="status-dot ${h.status}"></span>
+            </div>
+            <div class="hospital-meta">${h.dataset_size} samples · ${h.dataset_type}</div>
+            <div class="hospital-status">${h.status}</div>
+        </div>
+    `).join('');
+}
+```
+
+---
+
+## 6. Chart.js Configuration
+
+### Accuracy Chart
+```javascript
+accuracyChart = new Chart(document.getElementById('accuracy-chart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+        label: 'Global Accuracy',
+        data: [],
+        borderColor: '#10b981',        // Green line
+        backgroundColor: 'rgba(16,185,129,0.1)',
+        tension: 0.4,                  // Smooth curves
+        fill: true
+    }]},
+    options: { scales: { y: { beginAtZero: true, max: 1 }}}
 });
 ```
 
-**Why Polling Instead of WebSockets?**
-- **Simplicity**: Easier to implement and debug
-- **Reliability**: No connection drops
-- **Sufficient**: 5-second updates are fast enough for FL training
-- **Compatibility**: Works everywhere
+### Loss Chart
+```javascript
+lossChart = new Chart(document.getElementById('loss-chart'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+        label: 'Global Loss',
+        data: [],
+        borderColor: '#ef4444',        // Red line
+        backgroundColor: 'rgba(239,68,68,0.1)',
+        tension: 0.4,
+        fill: true
+    }]}
+});
+```
 
 ---
 
-## 4. Aggregator Dashboard
+## 7. Visual Effects & Animations
 
-### File Location
-```
-dashboard/index.html
-```
-
-### Design Differences
-
-**Hospital Dashboard:**
-- Focus: Individual hospital metrics
-- Primary Data: Training progress, local accuracy
-- User: Hospital administrator
-
-**Aggregator Dashboard:**
-- Focus: System-wide overview
-- Primary Data: All hospitals, global model
-- User: System administrator
-
-### Key Components
-
-#### 1. **Hospital Status Grid**
-```html
-<div class="hospitals-grid">
-    <div class="hospital-card">
-        <div class="hospital-header">
-            <h3>FL Test Hospital</h3>
-            <span class="status-dot connected"></span>
-        </div>
-        <div class="hospital-stats">
-            <div class="stat">
-                <span class="stat-label">Rounds</span>
-                <span class="stat-value">2</span>
-            </div>
-            <div class="stat">
-                <span class="stat-label">Avg Accuracy</span>
-                <span class="stat-value">72.88%</span>
-            </div>
-        </div>
-    </div>
-</div>
-```
-
-**Status Indicator:**
+### Floating Particles Background (Lines 29–32)
 ```css
-.status-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    display: inline-block;
-    animation: pulse 2s infinite;
+.particle { 
+    position: absolute; width: 3px; height: 3px; 
+    border-radius: 50%; background: var(--yellow); 
+    animation: floatUp 12s linear infinite; 
 }
+@keyframes floatUp { 
+    0% { transform: translateY(0); opacity: 0; } 
+    10% { opacity: 0.7; } 
+    100% { transform: translateY(-110vh); opacity: 0; } 
+}
+```
+20 yellow particles float upward continuously — gives the dashboard a "data flowing" feeling.
 
+### Connection Status Pulse
+```css
 .status-dot.connected {
     background: #10b981;
-    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    animation: pulse 2s infinite;
 }
-
 @keyframes pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-    }
-    70% {
-        box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
-    }
-    100% {
-        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
-    }
+    0% { box-shadow: 0 0 0 0 rgba(16,185,129,0.7); }
+    70% { box-shadow: 0 0 0 10px rgba(16,185,129,0); }
+    100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
 }
 ```
 
-**Why Pulsing Dot?**
-- **Visual Feedback**: Shows system is alive
-- **Attention**: Draws eye to connection status
-- **Professional**: Common in monitoring dashboards
-
-#### 2. **Global Metrics**
-```html
-<div class="global-metrics">
-    <div class="metric-large">
-        <div class="metric-icon">🌐</div>
-        <div class="metric-content">
-            <div class="metric-label">Connected Hospitals</div>
-            <div class="metric-value-large">1 / 1</div>
-        </div>
-    </div>
-    <div class="metric-large">
-        <div class="metric-icon">🔄</div>
-        <div class="metric-content">
-            <div class="metric-label">Current Round</div>
-            <div class="metric-value-large">2 / 10</div>
-        </div>
-    </div>
-</div>
-```
-
----
-
-## 5. Responsive Design
-
-### Mobile-First Approach
-
+### Hero Title Gradient
 ```css
-/* Mobile (default) */
-.metrics-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 16px;
+.hero h1 {
+    background: linear-gradient(92deg, #ea580c, #f97316, #fb923c, #ea580c);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
 }
+```
 
-/* Tablet */
-@media (min-width: 768px) {
-    .metrics-grid {
-        grid-template-columns: repeat(2, 1fr);
+---
+
+## 8. NGINX Reverse Proxy — `nginx.conf`
+
+```nginx
+server {
+    listen 80;
+    root /var/www/html;
+    index index.html;
+
+    location / { try_files $uri $uri/ /index.html; }       # SPA fallback
+    location /api/ { proxy_pass http://127.0.0.1:8000; }    # REST API
+    location /blockchain-api/ { proxy_pass http://127.0.0.1:7050/; }  # Blockchain
+    location /ws { 
+        proxy_pass http://127.0.0.1:8001; 
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";              # WebSocket upgrade
     }
 }
-
-/* Desktop */
-@media (min-width: 1024px) {
-    .metrics-grid {
-        grid-template-columns: repeat(4, 1fr);
-    }
-}
 ```
 
-### Breakpoints
-- **Mobile**: < 768px (1 column)
-- **Tablet**: 768px - 1024px (2 columns)
-- **Desktop**: > 1024px (4 columns)
+**Why NGINX?** The browser can only access port 80. All internal services (REST on 8000, blockchain on 7050, WebSocket on 8001) are accessed through NGINX reverse proxy paths.
 
 ---
 
-## 6. Accessibility Features
+## 9. API Endpoints Consumed by Dashboard
 
-### Semantic HTML
-```html
-<main role="main">
-    <section aria-labelledby="status-heading">
-        <h2 id="status-heading">Hospital Status</h2>
-        <!-- Content -->
-    </section>
-</main>
-```
-
-### Keyboard Navigation
-```css
-.button:focus {
-    outline: 3px solid #fbbf24;
-    outline-offset: 2px;
-}
-```
-
-### Color Contrast
-- All text meets WCAG AA standards (4.5:1 ratio)
-- Yellow on white: Adjusted to darker shade for readability
+| Endpoint | HTTP | Returns | Updates |
+|----------|------|---------|---------|
+| `/api/status` | GET | `{current_round, total_rounds, global_accuracy, global_loss, is_training, connected_hospitals, blockchain_connected, progress_percentage}` | Hero cards, progress bar |
+| `/api/hospitals` | GET | `{hospitals: [{hospital_id, hospital_name, dataset_size, dataset_type, status}]}` | Hospital cards |
+| `/api/metrics/history` | GET | `{accuracy_history: [...], loss_history: [...]}` | Chart.js graphs |
+| `/api/rewards` | GET | `{hospitals: [{hospital_id, total_rewards, rounds_participated}]}` | Leaderboard tab |
+| `/blockchain-api/api/blockchain/stats` | GET | `{total_blocks, total_transactions, is_valid, difficulty}` | Blockchain section |
+| `/blockchain-api/api/blockchain/transactions` | GET | `{transactions: [{type, hospital_id, block_index, timestamp}]}` | Audit trail tab |
 
 ---
 
-## 7. Performance Optimizations
-
-### CSS Optimizations
-1. **CSS Variables**: Reusable color scheme
-2. **Minimal Selectors**: Fast rendering
-3. **Hardware Acceleration**: `transform` for animations
-
-### JavaScript Optimizations
-1. **Debouncing**: Prevent excessive API calls
-2. **Lazy Loading**: Load data only when needed
-3. **Caching**: Store recent data to reduce requests
-
-```javascript
-let cache = {};
-const CACHE_DURATION = 5000; // 5 seconds
-
-async function fetchWithCache(url) {
-    const now = Date.now();
-    
-    if (cache[url] && (now - cache[url].timestamp) < CACHE_DURATION) {
-        return cache[url].data;
-    }
-    
-    const response = await fetch(url);
-    const data = await response.json();
-    
-    cache[url] = { data, timestamp: now };
-    return data;
-}
-```
-
----
-
-## 8. Key Files You Should Know
-
-### Frontend Files
-| File | Purpose | Your Contribution |
-|------|---------|-------------------|
-| `hospital_node/dashboard/index.html` | Hospital dashboard | Complete design & implementation |
-| `dashboard/index.html` | Aggregator dashboard | Complete design & implementation |
-| `hospital_node/dashboard_requirements.txt` | Frontend dependencies | Defined requirements |
-
-### Backend API Files (You Integrated With)
-| File | API Endpoints | Your Integration |
-|------|---------------|------------------|
-| `hospital_node/src/dashboard_api.py` | `/api/status`, `/api/rounds` | Fetch and display data |
-| `aggregator/src/dashboard_api.py` | `/api/status`, `/api/hospitals` | Fetch and display data |
-
----
-
-## 9. Presentation Talking Points
+## 10. Presentation Talking Points
 
 ### Opening (30 seconds)
-"I designed and implemented both the hospital and aggregator dashboards, focusing on creating an intuitive, professional interface that provides real-time visibility into the federated learning process."
+"I designed and built the central monitoring dashboard — a single-page application that provides real-time visibility into federated learning training across all hospitals. It shows live accuracy charts, hospital connections, blockchain audit trails, and the reward leaderboard, all updating every 5 seconds."
 
-### Technical Deep Dive (2 minutes)
+### Technical Deep Dive (3 minutes)
 
-**Design Philosophy:**
-"I chose a yellow and white color scheme to convey trust and professionalism in a medical context. The design is clean, modern, and accessible, meeting WCAG AA standards for color contrast."
+**Design System:**
+"I chose an amber-and-pearl color scheme with the Inter typeface to convey medical professionalism. The design uses CSS custom properties for consistency, subtle glassmorphism effects, and animated floating particles for visual engagement."
 
-**Key Features:**
-"The hospital dashboard shows real-time training progress with animated progress bars, color-coded metrics, and a complete training history table. The aggregator dashboard provides a system-wide view with hospital status indicators and global metrics."
+**Real-Time Data:**
+"The dashboard polls 6 API endpoints every 5 seconds via the Fetch API: training status, hospital list, accuracy/loss history, blockchain statistics, transactions, and reward rankings. Chart.js renders live-updating line charts for accuracy trends and loss curves."
 
-**Technical Decisions:**
-"I used vanilla CSS and JavaScript for maximum control and performance. The dashboard polls the backend API every 5 seconds for updates, which is sufficient for FL training cycles while being simple and reliable."
+**NGINX Proxy:**
+"Since the browser can only reach port 80, I configured NGINX as a reverse proxy with 4 upstream routes: `/api/` to the REST API on port 8000, `/blockchain-api/` to the blockchain on 7050, `/ws` for WebSocket upgrades, and `/` for the static dashboard."
 
-### Demo Points
-1. Show hospital dashboard with live data
-2. Demonstrate hover effects and animations
-3. Show responsive design on different screen sizes
-4. Display aggregator dashboard with multiple hospitals
-
-### Closing (30 seconds)
-"The dashboards provide complete visibility into the FL training process, making it easy for hospital administrators to monitor their participation and for system administrators to oversee the entire network."
-
----
-
-## 10. Common Questions & Answers
-
-**Q: Why not use a framework like React or Vue?**
-A: "For this project, vanilla JavaScript provided sufficient functionality while keeping the bundle size small and load times fast. It also gave us complete control over the design without framework constraints."
-
-**Q: How do you handle real-time updates?**
-A: "We use polling every 5 seconds. While WebSockets could provide instant updates, polling is simpler, more reliable, and sufficient for FL training which happens over minutes, not milliseconds."
-
-**Q: Is the dashboard mobile-friendly?**
-A: "Yes! I implemented a mobile-first responsive design with breakpoints at 768px and 1024px. The layout adapts from 1 column on mobile to 4 columns on desktop."
-
-**Q: How do you ensure accessibility?**
-A: "I used semantic HTML, ARIA labels, keyboard navigation support, and ensured all text meets WCAG AA color contrast standards. The interface is fully navigable without a mouse."
-
-**Q: What happens if the API is down?**
-A: "The dashboard shows error toast notifications and gracefully handles failed requests. Cached data is displayed until the connection is restored."
+### Live Demo Flow
+1. Open `http://54.91.23.82/` → show hero section with live metrics
+2. Point at "Connected Hospitals: 2" and the hospital cards
+3. Click "Accuracy" tab → show the line chart filling in
+4. Click "Leaderboard" tab → show hospital rankings with token counts
+5. Click "Audit Trail" tab → show blockchain transactions flowing
+6. Scroll to "Blockchain Statistics" → show blocks, transactions, validity
 
 ---
 
-## 11. Design Decisions Explained
+## 11. Panel Q&A Preparation
 
-### Color Psychology
-- **Yellow (#fbbf24)**: Optimism, energy, attention
-- **White (#f8f9fa)**: Cleanliness, simplicity, medical
-- **Dark Gray (#1f2937)**: Professionalism, readability
+**Q: Why not use React or Vue?**
+A: "For a monitoring dashboard with straightforward data binding, vanilla JS with the Fetch API is sufficient and adds zero build complexity. The entire UI is a single 639-line HTML file — no build step, instant deployment, and total control."
 
-### Typography
-- **Font**: System fonts (fast loading)
-- **Sizes**: 11pt base, 24pt headings
-- **Weight**: 400 (normal), 700 (bold)
+**Q: Why poll instead of WebSockets for everything?**
+A: "Polling every 5 seconds is simple, resilient to connection drops, and sufficient for federated learning rounds that take minutes each. We have WebSocket infrastructure ready (port 8001 proxied via NGINX) for future real-time push if needed."
 
-### Spacing
-- **Grid Gap**: 16px (mobile), 24px (desktop)
-- **Card Padding**: 24px
-- **Section Margin**: 40px
+**Q: How does the blockchain section work?**
+A: "The dashboard fetches from `/blockchain-api/api/blockchain/stats` and `/blockchain-api/api/blockchain/transactions`. NGINX proxies these to the blockchain container on port 7050. If the blockchain container is down, the dashboard gracefully shows 'Blockchain service offline' rather than crashing."
 
-### Animations
-- **Duration**: 0.2s - 0.5s (not too fast, not too slow)
-- **Easing**: `ease-in-out` (smooth)
-- **Purpose**: Feedback, not decoration
+**Q: Is it responsive?**
+A: "Yes — the grid layout uses CSS Grid with responsive breakpoints. On mobile, cards stack vertically. On desktop, the metrics grid uses 4 columns. The tab navigation adapts to screen width."
 
 ---
 
-## 12. Metrics to Mention
+## 12. Key Code References
 
-- **Dashboard Files**: 2 complete dashboards (hospital + aggregator)
-- **Lines of CSS**: ~800 lines of custom styling
-- **Lines of JavaScript**: ~400 lines of API integration
-- **API Endpoints Integrated**: 6 endpoints
-- **Responsive Breakpoints**: 3 (mobile, tablet, desktop)
-- **Accessibility**: WCAG AA compliant
-- **Load Time**: < 1 second (no external dependencies)
-
----
-
-## 13. Future Enhancements (If Asked)
-
-1. **Dark Mode**: Toggle for low-light environments
-2. **Data Visualization**: Charts for accuracy/loss trends
-3. **Notifications**: Browser notifications for round completion
-4. **Export**: Download training history as CSV
-5. **Customization**: User preferences for dashboard layout
-
----
-
-## Summary Checklist
-
-Before presentation, make sure you can explain:
-- ✅ Color scheme choice (yellow/white for medical trust)
-- ✅ Why vanilla CSS/JS (control, performance, simplicity)
-- ✅ Key UI components (status cards, progress bars, tables)
-- ✅ API integration and error handling
-- ✅ Real-time updates via polling (why not WebSockets)
-- ✅ Responsive design breakpoints
-- ✅ Accessibility features (WCAG AA, keyboard nav)
-- ✅ Performance optimizations (caching, debouncing)
-- ✅ File locations for all frontend code
-- ✅ Design decisions and UX rationale
-
-**You've got this! 🎨**
+| What to show | File | Lines | Key detail |
+|---|---|---|---|
+| CSS design tokens | `dashboard/index.html` | 11–23 | `:root` variables |
+| Particle animation | `dashboard/index.html` | 29–32 | `@keyframes floatUp` |
+| Tab switching JS | `dashboard/index.html` | 355–365 | `setInterval` polling |
+| Status card update | `dashboard/index.html` | 370–410 | `loadStatus()` |
+| Chart.js integration | `dashboard/index.html` | 420–460 | `loadMetricsHistory()` |
+| Blockchain fix | `dashboard/index.html` | 351 | `BLOCKCHAIN_URL = '/blockchain-api'` |
+| NGINX proxy | `dashboard/nginx.conf` | 20–53 | All proxy routes |
